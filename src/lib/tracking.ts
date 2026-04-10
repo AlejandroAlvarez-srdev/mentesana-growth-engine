@@ -59,6 +59,38 @@ function sendInternal(event: string, props: EventProps): void {
   } catch {}
 }
 
+// Meta Conversion API (server-side) — fires alongside the pixel for deduplication.
+// Reads _fbc and _fbp cookies for cross-device matching.
+function sendMetaCAPI(event: string, props: EventProps): void {
+  if (typeof window === "undefined") return;
+  try {
+    const cookies = document.cookie.split(";").reduce((acc, c) => {
+      const [k, v] = c.trim().split("=");
+      if (k && v) acc[k] = v;
+      return acc;
+    }, {} as Record<string, string>);
+
+    const payload = {
+      event,
+      props,
+      page_url: window.location.href,
+      page_path: window.location.pathname,
+      visitor_id: getVisitorId(),
+      session_id: getSessionId(),
+      user_data: {
+        fbc: cookies._fbc || undefined,
+        fbp: cookies._fbp || undefined,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/meta-capi", blob);
+    } else {
+      fetch("/api/meta-capi", { method: "POST", body: blob, keepalive: true }).catch(() => {});
+    }
+  } catch {}
+}
+
 // Map our internal event names to standard Meta/TikTok event names
 // where applicable. Custom events use the original name.
 const META_STANDARD: Record<string, string> = {
@@ -95,6 +127,9 @@ export function track(event: string, props: EventProps = {}): void {
 
   // 0. Internal — Supabase analytics_events table
   sendInternal(event, props);
+
+  // 0b. Meta Conversion API (server-side) — runs alongside pixel for better attribution
+  sendMetaCAPI(event, props);
 
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
