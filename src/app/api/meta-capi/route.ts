@@ -32,13 +32,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { event, props = {}, page_url, page_path, visitor_id, session_id, user_data = {} } = body as {
+    const { event, props = {}, page_url, page_path, referrer, visitor_id, session_id, screen_width, screen_height, language, timezone, user_data = {} } = body as {
       event: string;
       props?: Record<string, unknown>;
       page_url?: string;
       page_path?: string;
+      referrer?: string;
       visitor_id?: string;
       session_id?: string;
+      screen_width?: number;
+      screen_height?: number;
+      language?: string;
+      timezone?: string;
       user_data?: { email?: string; phone?: string; fn?: string; ln?: string; city?: string; country?: string; fbc?: string; fbp?: string };
     };
 
@@ -65,11 +70,22 @@ export async function POST(req: NextRequest) {
     if (ip) userData.client_ip_address = ip;
     if (ua) userData.client_user_agent = ua;
 
-    // Build custom_data
+    // Build custom_data with maximum info for attribution
     const customData: Record<string, unknown> = { ...props };
     if (eventName === "Purchase" && props.value) {
       customData.value = props.value;
       customData.currency = props.currency || "EUR";
+      customData.content_type = "product";
+      customData.content_name = "Primera sesión psicología";
+    }
+    if (eventName === "ViewContent") {
+      customData.content_type = "product";
+      customData.content_name = props.psychologist || "Psicóloga match";
+    }
+    if (eventName === "InitiateCheckout") {
+      customData.value = props.value || 9.99;
+      customData.currency = "EUR";
+      customData.num_items = 1;
     }
 
     const payload = {

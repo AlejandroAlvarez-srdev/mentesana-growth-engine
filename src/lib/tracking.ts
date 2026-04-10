@@ -70,16 +70,42 @@ function sendMetaCAPI(event: string, props: EventProps): void {
       return acc;
     }, {} as Record<string, string>);
 
+    // Collect maximum user data for Meta matching quality
+    const utmSource = sessionStorage.getItem("utm_source") || undefined;
+    const utmMedium = sessionStorage.getItem("utm_medium") || undefined;
+    const utmCampaign = sessionStorage.getItem("utm_campaign") || undefined;
+    // Grab any user info stored from checkout/forms
+    const storedEmail = localStorage.getItem("ms_user_email") || undefined;
+    const storedPhone = localStorage.getItem("ms_user_phone") || undefined;
+    const storedName = localStorage.getItem("ms_user_name") || undefined;
+    const storedCity = localStorage.getItem("ms_user_city") || undefined;
+
     const payload = {
       event,
-      props,
+      props: {
+        ...props,
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        utm_campaign: utmCampaign,
+      },
       page_url: window.location.href,
       page_path: window.location.pathname,
+      referrer: document.referrer || undefined,
       visitor_id: getVisitorId(),
       session_id: getSessionId(),
+      screen_width: window.screen?.width,
+      screen_height: window.screen?.height,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       user_data: {
         fbc: cookies._fbc || undefined,
         fbp: cookies._fbp || undefined,
+        email: storedEmail,
+        phone: storedPhone,
+        fn: storedName?.split(" ")[0],
+        ln: storedName?.split(" ").slice(1).join(" ") || undefined,
+        city: storedCity,
+        country: "ES",
       },
     };
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
@@ -169,4 +195,19 @@ export function track(event: string, props: EventProps = {}): void {
 /** Convenience wrapper to track a page view (auto for most cases). */
 export function trackPageView(page: string): void {
   track("page_view", { page });
+}
+
+/**
+ * Store user PII so CAPI sends it with every subsequent event.
+ * Call this whenever you capture user data (checkout, forms, confirmación).
+ * Data is hashed server-side before sending to Meta — never sent in plain text.
+ */
+export function identifyUser(data: { email?: string; phone?: string; name?: string; city?: string }): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (data.email) localStorage.setItem("ms_user_email", data.email);
+    if (data.phone) localStorage.setItem("ms_user_phone", data.phone);
+    if (data.name) localStorage.setItem("ms_user_name", data.name);
+    if (data.city) localStorage.setItem("ms_user_city", data.city);
+  } catch {}
 }
