@@ -117,6 +117,36 @@ function sendMetaCAPI(event: string, props: EventProps): void {
   } catch {}
 }
 
+// TikTok Events API (server-side) — same pattern as Meta CAPI
+function sendTikTokCAPI(event: string, props: EventProps): void {
+  if (typeof window === "undefined") return;
+  try {
+    const storedEmail = localStorage.getItem("ms_user_email") || undefined;
+    const storedPhone = localStorage.getItem("ms_user_phone") || undefined;
+    const storedName = localStorage.getItem("ms_user_name") || undefined;
+
+    const payload = {
+      event,
+      props,
+      page_url: window.location.href,
+      page_path: window.location.pathname,
+      referrer: document.referrer || undefined,
+      visitor_id: getVisitorId(),
+      user_data: {
+        email: storedEmail,
+        phone: storedPhone,
+        fn: storedName?.split(" ")[0],
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/tiktok-capi", blob);
+    } else {
+      fetch("/api/tiktok-capi", { method: "POST", body: blob, keepalive: true }).catch(() => {});
+    }
+  } catch {}
+}
+
 // Map our internal event names to standard Meta/TikTok event names
 // where applicable. Custom events use the original name.
 const META_STANDARD: Record<string, string> = {
@@ -156,6 +186,9 @@ export function track(event: string, props: EventProps = {}): void {
 
   // 0b. Meta Conversion API (server-side) — runs alongside pixel for better attribution
   sendMetaCAPI(event, props);
+
+  // 0c. TikTok Events API (server-side) — runs alongside pixel for deduplication
+  sendTikTokCAPI(event, props);
 
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
