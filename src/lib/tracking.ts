@@ -158,6 +158,15 @@ const META_STANDARD: Record<string, string> = {
   contact_submitted: "Contact",
   newsletter_subscribed: "Subscribe",
   cta_click_buy: "AddToCart",
+  // Diagnostic funnel
+  view_landing_diagnostico: "ViewContent",
+  click_cta_empezar: "AddToCart",
+  start_matching: "InitiateCheckout",
+  view_match_result: "ViewContent",
+  select_slot: "Schedule",
+  initiate_checkout: "InitiateCheckout",
+  purchase: "Purchase",
+  upsell_bono_purchased: "Purchase",
 };
 
 const TIKTOK_STANDARD: Record<string, string> = {
@@ -169,6 +178,15 @@ const TIKTOK_STANDARD: Record<string, string> = {
   contact_submitted: "Contact",
   newsletter_subscribed: "Subscribe",
   cta_click_buy: "AddToCart",
+  // Diagnostic funnel
+  view_landing_diagnostico: "ViewContent",
+  click_cta_empezar: "ClickButton",
+  start_matching: "InitiateCheckout",
+  view_match_result: "ViewContent",
+  select_slot: "ClickButton",
+  initiate_checkout: "InitiateCheckout",
+  purchase: "CompletePayment",
+  upsell_bono_purchased: "CompletePayment",
 };
 
 interface FbqWindow extends Window {
