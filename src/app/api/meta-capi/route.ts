@@ -28,7 +28,7 @@ const META_STANDARD: Record<string, string> = {
 // POST { event, props, page_url, user_data }
 // Sends server-side event to Meta Conversion API for deduplication + better attribution.
 export async function POST(req: NextRequest) {
-  if (!ACCESS_TOKEN) return NextResponse.json({ ok: false, error: "no token" }, { status: 500 });
+  if (!ACCESS_TOKEN) return new NextResponse(null, { status: 204 });
 
   try {
     const body = await req.json();
