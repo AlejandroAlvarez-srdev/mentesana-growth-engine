@@ -32,8 +32,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { event, props = {}, page_url, page_path, referrer, visitor_id, session_id, screen_width, screen_height, language, timezone, user_data = {} } = body as {
+    const { event, event_id, props = {}, page_url, page_path, referrer, visitor_id, session_id, screen_width, screen_height, language, timezone, user_data = {} } = body as {
       event: string;
+      event_id?: string;
       props?: Record<string, unknown>;
       page_url?: string;
       page_path?: string;
@@ -48,7 +49,9 @@ export async function POST(req: NextRequest) {
     };
 
     const eventName = META_STANDARD[event] || event;
-    const eventId = `${event}_${visitor_id || ""}_${Date.now()}`;
+    // Prefer client-provided event_id so pixel + CAPI dedupe correctly.
+    // Fallback: generate one server-side if client didn't send it (legacy callers).
+    const eventId = event_id || `${event}_${visitor_id || ""}_${Date.now()}`;
     const timestamp = Math.floor(Date.now() / 1000);
 
     // Build user_data with hashed PII

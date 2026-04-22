@@ -61,7 +61,8 @@ function sendInternal(event: string, props: EventProps): void {
 
 // Meta Conversion API (server-side) — fires alongside the pixel for deduplication.
 // Reads _fbc and _fbp cookies for cross-device matching.
-function sendMetaCAPI(event: string, props: EventProps): void {
+// Accepts an `eventId` so pixel + CAPI share the same event_id — Meta dedupes by this.
+function sendMetaCAPI(event: string, props: EventProps, eventId: string): void {
   if (typeof window === "undefined") return;
   try {
     const cookies = document.cookie.split(";").reduce((acc, c) => {
@@ -82,6 +83,7 @@ function sendMetaCAPI(event: string, props: EventProps): void {
 
     const payload = {
       event,
+      event_id: eventId,
       props: {
         ...props,
         utm_source: utmSource,
@@ -199,11 +201,14 @@ export function track(event: string, props: EventProps = {}): void {
   if (typeof window === "undefined") return;
   const w = window as FbqWindow;
 
+  // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
+  const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
   // 0. Internal — Supabase analytics_events table
   sendInternal(event, props);
 
   // 0b. Meta Conversion API (server-side) — runs alongside pixel for better attribution
-  sendMetaCAPI(event, props);
+  sendMetaCAPI(event, props, eventId);
 
   // 0c. TikTok Events API (server-side) — runs alongside pixel for deduplication
   sendTikTokCAPI(event, props);
@@ -211,14 +216,14 @@ export function track(event: string, props: EventProps = {}): void {
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
 
-  // 2. Meta Pixel
+  // 2. Meta Pixel — eventID param enables deduplication with CAPI
   try {
     if (w.fbq) {
       const standard = META_STANDARD[event];
       if (standard) {
-        w.fbq("track", standard, props);
+        w.fbq("track", standard, props, { eventID: eventId });
       } else {
-        w.fbq("trackCustom", event, props);
+        w.fbq("trackCustom", event, props, { eventID: eventId });
       }
     }
   } catch {}
