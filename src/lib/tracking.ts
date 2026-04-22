@@ -169,6 +169,9 @@ const META_STANDARD: Record<string, string> = {
   initiate_checkout: "InitiateCheckout",
   purchase: "Purchase",
   upsell_bono_purchased: "Purchase",
+  // Campaña Eva (influencer → diagnóstico)
+  view_landing_eva: "ViewContent",
+  click_cta_eva: "AddToCart",
 };
 
 const TIKTOK_STANDARD: Record<string, string> = {
@@ -189,6 +192,9 @@ const TIKTOK_STANDARD: Record<string, string> = {
   initiate_checkout: "InitiateCheckout",
   purchase: "CompletePayment",
   upsell_bono_purchased: "CompletePayment",
+  // Campaña Eva
+  view_landing_eva: "ViewContent",
+  click_cta_eva: "ClickButton",
 };
 
 interface FbqWindow extends Window {
