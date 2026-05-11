@@ -9,6 +9,7 @@
  */
 
 import { track as vercelTrack } from "@vercel/analytics";
+import { hasConsent } from "@/lib/cookie-consent";
 
 type EventProps = Record<string, string | number | boolean>;
 
@@ -210,14 +211,14 @@ export function track(event: string, props: EventProps = {}): void {
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
   const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-  // 0. Internal — Supabase analytics_events table
+  // 0. Internal — Supabase analytics_events table (analítica propia, interés legítimo)
   sendInternal(event, props);
 
-  // 0b. Meta Conversion API (server-side) — runs alongside pixel for better attribution
-  sendMetaCAPI(event, props, eventId);
+  // 0b. Meta Conversion API (server-side) — marketing, requiere consentimiento
+  if (hasConsent("marketing")) sendMetaCAPI(event, props, eventId);
 
-  // 0c. TikTok Events API (server-side) — runs alongside pixel for deduplication
-  sendTikTokCAPI(event, props);
+  // 0c. TikTok Events API (server-side) — marketing, requiere consentimiento
+  if (hasConsent("marketing")) sendTikTokCAPI(event, props);
 
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
