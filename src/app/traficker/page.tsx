@@ -98,6 +98,7 @@ export default function TrafickerDashboard() {
       <MyTasks api="/api/traficker/tasks" />
       <DailyBrief accountId={selectedAcc} />
       <BreakdownDashboard accountId={selectedAcc} />
+      <ExtrasDashboard accountId={selectedAcc} />
 
       {meta_error && <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>⚠️ Error: {meta_error}</div>}
 
@@ -255,6 +256,166 @@ export default function TrafickerDashboard() {
   );
 }
 
+// ─── DASHBOARD EXTRAS · cards adicionales ───
+function ExtrasDashboard({ accountId }: { accountId: string }) {
+  const [d, setD] = useState<any>(null);
+  const [reqAd, setReqAd] = useState<any>(null);
+  useEffect(() => {
+    const qs = new URLSearchParams({ days: "30" });
+    if (accountId) qs.set("account_id", accountId);
+    fetch(`/api/agent/meta/insights-extras?${qs}`, { credentials: "include" }).then(r => r.ok ? r.json() : null).then(setD);
+  }, [accountId]);
+  if (!d || d.spend_total === 0) return null;
+
+  return (
+    <section style={{ marginBottom: 22 }}>
+      <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>💡 Insights extras · últimos {d.days}d</h2>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        {/* Pixel health */}
+        {d.pixel_health.pct !== null && (
+          <div style={{ padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)", borderLeft: `4px solid ${d.pixel_health.pct >= 70 ? "#16a34a" : d.pixel_health.pct >= 40 ? "#d97706" : "#dc2626"}` }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>🩺 Pixel Health</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: d.pixel_health.pct >= 70 ? "#16a34a" : d.pixel_health.pct >= 40 ? "#d97706" : "#dc2626", marginTop: 4 }}>{d.pixel_health.pct}%</div>
+            <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{d.pixel_health.ads_with_results}/{d.pixel_health.ads_with_spend} ads con conversiones</div>
+          </div>
+        )}
+        {/* CPC + CPM */}
+        <div style={{ padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)" }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>🖱 CPC medio</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: PURPLE, marginTop: 4 }}>{d.avg_cpc !== null ? `${d.avg_cpc.toFixed(2)}€` : "—"}</div>
+          <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>CPM medio · <strong>{d.avg_cpm !== null ? `${d.avg_cpm.toFixed(2)}€` : "—"}</strong></div>
+        </div>
+        {/* Best day */}
+        {d.best_day && (
+          <div style={{ padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(16,163,74,0.2)" }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>🏆 Mejor día</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#16a34a", marginTop: 4 }}>{new Date(d.best_day.date).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}</div>
+            <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{d.best_day.results} conv · {d.best_day.spend}€{d.best_day.cpa ? ` · ${d.best_day.cpa}€ CPA` : ""}</div>
+          </div>
+        )}
+        {/* Worst day */}
+        {d.worst_day && (
+          <div style={{ padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(220,38,38,0.2)" }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>📉 Peor día</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#dc2626", marginTop: 4 }}>{new Date(d.worst_day.date).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}</div>
+            <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{d.worst_day.results} conv · {d.worst_day.spend}€{d.worst_day.cpa ? ` · ${d.worst_day.cpa}€ CPA` : ""}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Hidden gems */}
+      {d.hidden_gems && d.hidden_gems.length > 0 && (
+        <div style={{ marginTop: 14, padding: 14, background: "#fff", borderRadius: 12, border: `1px solid ${PURPLE}22` }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 900, color: PURPLE }}>💎 Hidden gems — gastan poco pero rinden mucho</h3>
+          <p style={{ margin: "0 0 10px", fontSize: 11, color: "#666" }}>Anuncios con &lt;100€ de gasto y ROAS ≥2x. Pide variaciones o sube presupuesto.</p>
+          <div style={{ display: "grid", gap: 5 }}>
+            {d.hidden_gems.map((a: any) => (
+              <div key={a.fb_ad_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: 8, background: "rgba(106,23,140,0.04)", borderRadius: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: 12, color: "#1a1a2e" }}>{a.ad_name}</strong>
+                  <div style={{ fontSize: 10.5, color: "#666" }}>{a.spend}€ · CTR {a.ctr.toFixed(2)}% · {a.results} conv</div>
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 900, color: "#16a34a" }}>{a.roas?.toFixed(2)}x</span>
+                <button onClick={() => setReqAd(a)} style={btnRequest}>✨ Pedir variaciones</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Format mix */}
+      {d.formats && d.formats.length > 0 && (
+        <div style={{ marginTop: 14, padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)" }}>
+          <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 900, color: "#1a1a2e" }}>🎬 Formato · gasto y conversiones</h3>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${d.formats.length}, 1fr)`, gap: 10 }}>
+            {d.formats.map((f: any) => (
+              <div key={f.format} style={{ padding: 10, background: "rgba(0,0,0,0.02)", borderRadius: 8 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase" }}>{f.format} · {f.count} ads</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: PURPLE, marginTop: 4 }}>{f.spend.toFixed(0)}€</div>
+                <div style={{ fontSize: 10.5, color: "#666", marginTop: 2 }}>{f.results} conv{f.cpa ? ` · ${f.cpa}€ CPA` : ""}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top campañas */}
+      {d.top_campaigns && d.top_campaigns.length > 0 && (
+        <div style={{ marginTop: 14, padding: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)" }}>
+          <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 900, color: "#1a1a2e" }}>🚀 Top campañas por gasto</h3>
+          <div style={{ display: "grid", gap: 5 }}>
+            {d.top_campaigns.map((c: any) => (
+              <div key={c.fb_campaign_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, background: "rgba(0,0,0,0.02)", borderRadius: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: 12 }}>{c.name}</strong>
+                  <div style={{ fontSize: 10.5, color: "#666" }}>{c.spend}€ · {c.results} conv{c.cpa ? ` · ${c.cpa}€ CPA` : ""} · CTR {c.ctr.toFixed(2)}%</div>
+                </div>
+                {c.roas !== null && <span style={{ fontSize: 13, fontWeight: 900, color: c.roas >= 2 ? "#16a34a" : c.roas >= 1 ? "#d97706" : "#dc2626" }}>{c.roas.toFixed(2)}x</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {reqAd && <RequestCreativeModal ad={reqAd} onClose={() => setReqAd(null)} />}
+    </section>
+  );
+}
+
+// ─── PEDIR CREATIVO AL VIDEO MAKER ───
+function RequestCreativeModal({ ad, onClose }: { ad: any; onClose: () => void }) {
+  const [kind, setKind] = useState("variations");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const kinds = [
+    { value: "variations", label: "✨ 3-5 variaciones del ganador" },
+    { value: "refresh", label: "🔄 Refresh creativo completo" },
+    { value: "testimonial", label: "🎤 Versión testimonio / UGC" },
+    { value: "reel_short", label: "⚡ Reel ultra-corto (≤10s)" },
+    { value: "image_static", label: "🖼️ Versión estática" },
+    { value: "custom", label: "📨 Petición personalizada" },
+  ];
+  async function send() {
+    setBusy(true);
+    const r = await fetch("/api/agent/meta/request-creative", {
+      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, ad_name: ad.ad_name, fb_ad_id: ad.fb_ad_id, note, stats: { spend: ad.spend, ctr: ad.ctr, roas: ad.roas, cpa: ad.cpa, frequency: ad.frequency, results: ad.results } }),
+    });
+    setBusy(false);
+    if (!r.ok) { alert("Error: " + ((await r.json()).message ?? "")); return; }
+    const d = await r.json();
+    alert(`✓ Tarea creada para video maker (${d.assigned_to}). Llegará a su panel con todo el contexto del anuncio.`);
+    onClose();
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 22, maxWidth: 500, width: "100%" }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 18, color: PURPLE }}>📨 Pedir creativo al video maker</h2>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "#666" }}>Referencia: <strong>{ad.ad_name}</strong>{ad.roas ? ` · ROAS ${ad.roas.toFixed(2)}x` : ""}</p>
+        <label style={{ display: "block", marginBottom: 10 }}>
+          <span style={{ display: "block", fontSize: 10.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Tipo de petición</span>
+          <select value={kind} onChange={e => setKind(e.target.value)} style={inpModal}>
+            {kinds.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 10 }}>
+          <span style={{ display: "block", fontSize: 10.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Nota / instrucciones extra</span>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={4} placeholder="Ej: enfoca al ángulo 'no decido empezar terapia'. Mantén el hook visual de la primera escena." style={{ ...inpModal, fontFamily: "inherit", resize: "vertical" }} />
+        </label>
+        <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Se asigna automáticamente al maker con menos tareas hoy (round-robin). Stats del anuncio incluidas en la descripción.</p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+          <button onClick={onClose} style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: "1px solid rgba(0,0,0,0.12)", background: "#fff", color: "#475569", cursor: "pointer" }}>Cancelar</button>
+          <button onClick={send} disabled={busy} style={{ padding: "9px 18px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: "none", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, color: "#fff", cursor: "pointer", opacity: busy ? 0.5 : 1 }}>{busy ? "Enviando…" : "📨 Pedir al video maker"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const btnRequest: React.CSSProperties = { padding: "5px 10px", fontSize: 10.5, fontWeight: 800, color: "#fff", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, border: "none", borderRadius: 5, cursor: "pointer", whiteSpace: "nowrap" };
+const inpModal: React.CSSProperties = { width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, boxSizing: "border-box", fontFamily: "inherit", color: "#1a1a2e" };
+
 // ─── DRILL-DOWN Campañas → Adsets → Ads ───
 type AdRow2 = { fb_ad_id: string; name: string; spend: number; impressions: number; clicks: number; ctr: number; frequency: number; thumbstop: number; results: number; cpa: number | null; roas: number | null };
 type AdsetRow = { fb_adset_id: string; name: string; spend: number; clicks: number; ctr: number; frequency: number; results: number; cpa: number | null; roas: number | null; ads_count: number; ads: AdRow2[] };
@@ -267,6 +428,7 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
   const [openAdset, setOpenAdset] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [reqAd, setReqAd] = useState<any>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -352,6 +514,7 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
                           <span style={{ textAlign: "right" }}>{ad.results}</span>
                           <span style={{ textAlign: "right" }}>{ad.cpa !== null ? `${ad.cpa.toFixed(2)}€` : "—"}</span>
                           <span style={{ textAlign: "right", fontWeight: 700, color: ad.roas !== null && ad.roas >= 2 ? "#16a34a" : ad.roas !== null && ad.roas < 1 ? "#dc2626" : "#475569" }}>{ad.roas !== null ? `${ad.roas.toFixed(2)}x` : "—"}</span>
+                          <button onClick={() => setReqAd({ ad_name: ad.name, fb_ad_id: ad.fb_ad_id, spend: ad.spend, ctr: ad.ctr, roas: ad.roas, cpa: ad.cpa, frequency: ad.frequency, results: ad.results })} title="Pedir creativo al video maker" style={{ padding: "2px 6px", fontSize: 10, color: PURPLE, background: "transparent", border: `1px solid ${PURPLE}55`, borderRadius: 4, cursor: "pointer", marginRight: 4 }}>📨</button>
                           <button onClick={() => pauseAd(ad.fb_ad_id)} disabled={acting === ad.fb_ad_id} style={{ padding: "2px 6px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer", opacity: acting === ad.fb_ad_id ? 0.4 : 1 }}>⏸</button>
                         </div>
                       ))}
