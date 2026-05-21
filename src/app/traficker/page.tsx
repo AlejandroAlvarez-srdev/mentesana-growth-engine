@@ -224,8 +224,10 @@ export default function TrafickerDashboard() {
 }
 
 function TokenConnectModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [token, setToken] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [preview, setPreview] = useState<{ me: any; accounts: any[] } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -239,6 +241,16 @@ function TokenConnectModal({ onClose, onDone }: { onClose: () => void; onDone: (
     const d = await r.json();
     setPreview({ me: d.me, accounts: d.accounts });
     setSelected(new Set(d.accounts.map((a: any) => a.fb_account_id)));
+  }
+
+  async function saveDirect() {
+    setBusy(true); setErr(null);
+    const r = await fetch("/api/agent/meta/save-direct", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ad_account_id: accountId, expires_at: expiresAt || null }) });
+    setBusy(false);
+    if (!r.ok) { setErr(((await r.json()).message ?? "Error")); return; }
+    const d = await r.json();
+    alert(`✓ Cuenta vinculada: ${d.account.name} (${d.account.currency})`);
+    onDone();
   }
 
   async function save() {
@@ -255,7 +267,12 @@ function TokenConnectModal({ onClose, onDone }: { onClose: () => void; onDone: (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 22, maxWidth: 560, width: "100%", maxHeight: "90vh", overflow: "auto" }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 18, color: PURPLE }}>Conectar Meta Ads con token</h2>
-        <p style={{ margin: "0 0 14px", fontSize: 12, color: "#666" }}>Pega un access token largo (60d) o System User token. Detectamos tus ad accounts automáticamente.</p>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "#666" }}>Pega un access token. Si el modo automático falla, usa el manual con el ad account ID.</p>
+
+        <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(0,0,0,0.04)", padding: 4, borderRadius: 8, width: "fit-content" }}>
+          <button onClick={() => setMode("auto")} style={{ padding: "6px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 6, border: "none", background: mode === "auto" ? "#fff" : "transparent", color: mode === "auto" ? PURPLE : "#666", cursor: "pointer" }}>🔍 Auto-detectar cuentas</button>
+          <button onClick={() => setMode("manual")} style={{ padding: "6px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 6, border: "none", background: mode === "manual" ? "#fff" : "transparent", color: mode === "manual" ? PURPLE : "#666", cursor: "pointer" }}>✋ Manual (account ID)</button>
+        </div>
 
         <label style={{ display: "block", marginBottom: 8 }}>
           <span style={{ display: "block", fontSize: 10.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>Access token *</span>
@@ -269,7 +286,16 @@ function TokenConnectModal({ onClose, onDone }: { onClose: () => void; onDone: (
 
         {err && <div style={{ padding: 10, background: "#fef2f2", color: "#991b1b", borderRadius: 8, fontSize: 12.5, marginBottom: 10 }}>⚠️ {err}</div>}
 
-        {!preview ? (
+        {mode === "manual" ? (
+          <>
+            <label style={{ display: "block", marginBottom: 8 }}>
+              <span style={{ display: "block", fontSize: 10.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>Ad Account ID *</span>
+              <input value={accountId} onChange={e => setAccountId(e.target.value)} placeholder="REDACTED_ID (sin el prefijo act_)" style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, boxSizing: "border-box" }} />
+              <span style={{ fontSize: 10.5, color: "#888", marginTop: 4, display: "block" }}>Lo encuentras en Ads Manager → arriba a la izquierda junto al nombre de la cuenta (números después de "act_").</span>
+            </label>
+            <button onClick={saveDirect} disabled={!token || !accountId || busy} style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: "none", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, color: "#fff", cursor: "pointer", opacity: !token || !accountId || busy ? 0.5 : 1 }}>{busy ? "Verificando…" : "✓ Conectar esta cuenta"}</button>
+          </>
+        ) : !preview ? (
           <button onClick={check} disabled={!token || busy} style={{ ...btnPrimary, opacity: !token || busy ? 0.5 : 1 }}>{busy ? "Verificando…" : "🔍 Verificar token y listar cuentas"}</button>
         ) : (
           <>
@@ -296,7 +322,13 @@ function TokenConnectModal({ onClose, onDone }: { onClose: () => void; onDone: (
         )}
 
         <p style={{ margin: "14px 0 0", fontSize: 10.5, color: "#888", lineHeight: 1.5 }}>
-          💡 Generar token: Business Manager → Configuración → Usuarios del sistema → Generar nuevo token con permisos <code>ads_read</code> + <code>ads_management</code>. Esa key dura sin caducar.
+          💡 <strong>Cómo generar el token correcto</strong>:<br/>
+          1. Business Manager → <strong>Configuración del negocio</strong><br/>
+          2. <strong>Usuarios del sistema</strong> → click en tu System User<br/>
+          3. Pestaña <strong>Activos asignados</strong> → añade la <strong>Ad Account</strong> con permiso "Administrar campañas"<br/>
+          4. Botón <strong>Generar nuevo token</strong> → app de la empresa → scopes <code>ads_management</code> + <code>ads_read</code> + <code>business_management</code><br/>
+          5. Copia el token COMPLETO (es muy largo) y pégalo aquí<br/><br/>
+          ⚠️ Si sigue fallando: usa modo <strong>Manual</strong> arriba y pega el ID de la cuenta directamente.
         </p>
       </div>
     </div>
