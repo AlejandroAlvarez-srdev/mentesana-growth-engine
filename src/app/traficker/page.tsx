@@ -97,6 +97,7 @@ export default function TrafickerDashboard() {
 
       <MyTasks api="/api/traficker/tasks" />
       <DailyBrief accountId={selectedAcc} />
+      <BreakdownDashboard accountId={selectedAcc} />
 
       {meta_error && <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>⚠️ Error: {meta_error}</div>}
 
@@ -252,6 +253,125 @@ export default function TrafickerDashboard() {
     </main>
     </div>
   );
+}
+
+// ─── DRILL-DOWN Campañas → Adsets → Ads ───
+type AdRow2 = { fb_ad_id: string; name: string; spend: number; impressions: number; clicks: number; ctr: number; frequency: number; thumbstop: number; results: number; cpa: number | null; roas: number | null };
+type AdsetRow = { fb_adset_id: string; name: string; spend: number; clicks: number; ctr: number; frequency: number; results: number; cpa: number | null; roas: number | null; ads_count: number; ads: AdRow2[] };
+type CampRow = { fb_campaign_id: string; name: string; spend: number; clicks: number; ctr: number; results: number; cpa: number | null; roas: number | null; adsets_count: number; adsets: AdsetRow[] };
+
+function BreakdownDashboard({ accountId }: { accountId: string }) {
+  const [range, setRange] = useState<"today" | "yesterday" | "7d" | "30d" | "90d" | "mtd" | "all">("7d");
+  const [data, setData] = useState<{ totals: any; campaigns: CampRow[]; startDate: string; endDate: string } | null>(null);
+  const [openCamp, setOpenCamp] = useState<string | null>(null);
+  const [openAdset, setOpenAdset] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    const qs = new URLSearchParams({ range });
+    if (accountId) qs.set("account_id", accountId);
+    fetch(`/api/agent/meta/breakdown?${qs}`, { credentials: "include" }).then(r => r.ok ? r.json() : null).then(setData).finally(() => setLoading(false));
+  }, [range, accountId]);
+
+  async function pauseAd(adId: string) {
+    if (!accountId) { alert("Selecciona cuenta arriba"); return; }
+    if (!confirm("¿Pausar este anuncio?")) return;
+    setActing(adId);
+    const r = await fetch("/api/agent/meta/action", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accountId, fb_object_id: adId, action: "pause", reason: "desde breakdown" }) });
+    setActing(null);
+    if (!r.ok) { alert("Error"); return; }
+    alert("✓ Pausado");
+  }
+
+  const t = data?.totals;
+
+  return (
+    <section style={{ marginBottom: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1a1a2e" }}>📊 Performance · drill-down</h2>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {(["today","yesterday","7d","30d","90d","mtd","all"] as const).map(r => (
+            <button key={r} onClick={() => setRange(r)} style={{ padding: "5px 10px", fontSize: 11.5, fontWeight: 700, borderRadius: 6, border: range === r ? `1px solid ${PURPLE}` : "1px solid rgba(0,0,0,0.1)", background: range === r ? PURPLE : "#fff", color: range === r ? "#fff" : "#475569", cursor: "pointer" }}>
+              {r === "today" ? "Hoy" : r === "yesterday" ? "Ayer" : r === "mtd" ? "Mes" : r === "all" ? "Todo" : r}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ padding: 20, color: "#888", textAlign: "center" }}>Cargando…</div>}
+      {data && (
+        <>
+          {t && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 12 }}>
+              <Tile label="Gasto" value={`${t.spend.toFixed(0)}€`} color={PURPLE} />
+              <Tile label="Impresiones" value={t.impressions.toLocaleString("es-ES")} color="#475569" />
+              <Tile label="CTR" value={`${t.ctr.toFixed(2)}%`} color={t.ctr >= 1.5 ? "#16a34a" : t.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
+              <Tile label="Resultados" value={t.results} color="#16a34a" />
+              <Tile label="CPA" value={t.cpa !== null ? `${t.cpa.toFixed(2)}€` : "—"} color={t.cpa !== null && t.cpa < 10 ? "#16a34a" : t.cpa !== null && t.cpa < 25 ? "#d97706" : "#dc2626"} />
+              <Tile label="ROAS" value={t.roas !== null ? `${t.roas.toFixed(2)}x` : "—"} color={t.roas !== null && t.roas >= 2 ? "#16a34a" : t.roas !== null && t.roas >= 1 ? "#d97706" : "#dc2626"} />
+            </div>
+          )}
+          {data.campaigns.length === 0 ? (
+            <div style={{ padding: 30, background: "#fff", borderRadius: 12, color: "#aaa", textAlign: "center" }}>Sin datos en este periodo. Pulsa ↻ Sincronizar arriba.</div>
+          ) : (
+            <div style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)", overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px 60px 70px 70px 90px 40px", gap: 8, padding: "8px 12px", background: "rgba(106,23,140,0.06)", fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                <span>Campaña / Adset / Anuncio</span><span style={{ textAlign: "right" }}>Spend</span><span style={{ textAlign: "right" }}>CTR</span><span style={{ textAlign: "right" }}>Frec</span><span style={{ textAlign: "right" }}>Conv</span><span style={{ textAlign: "right" }}>CPA</span><span style={{ textAlign: "right" }}>ROAS</span><span />
+              </div>
+              {data.campaigns.map(c => (
+                <div key={c.fb_campaign_id} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                  <div onClick={() => setOpenCamp(openCamp === c.fb_campaign_id ? null : c.fb_campaign_id)} style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px 60px 70px 70px 90px 40px", gap: 8, padding: "10px 12px", cursor: "pointer", fontSize: 12.5, alignItems: "center", background: openCamp === c.fb_campaign_id ? "rgba(106,23,140,0.03)" : "transparent" }}>
+                    <span><span style={{ color: PURPLE, fontWeight: 800, marginRight: 4 }}>{openCamp === c.fb_campaign_id ? "▼" : "▶"}</span><strong>{c.name}</strong> <span style={{ color: "#94a3b8", fontSize: 10.5 }}>· {c.adsets_count} adset(s)</span></span>
+                    <span style={{ textAlign: "right", fontWeight: 700 }}>{c.spend.toFixed(0)}€</span>
+                    <span style={{ textAlign: "right", color: c.ctr >= 1.5 ? "#16a34a" : c.ctr < 0.7 ? "#dc2626" : "#475569" }}>{c.ctr.toFixed(2)}%</span>
+                    <span style={{ textAlign: "right", color: "#94a3b8" }}>—</span>
+                    <span style={{ textAlign: "right", fontWeight: 700, color: "#16a34a" }}>{c.results}</span>
+                    <span style={{ textAlign: "right" }}>{c.cpa !== null ? `${c.cpa.toFixed(2)}€` : "—"}</span>
+                    <span style={{ textAlign: "right", fontWeight: 800, color: c.roas !== null && c.roas >= 2 ? "#16a34a" : "#475569" }}>{c.roas !== null ? `${c.roas.toFixed(2)}x` : "—"}</span>
+                    <span />
+                  </div>
+                  {openCamp === c.fb_campaign_id && c.adsets.map(s => (
+                    <div key={s.fb_adset_id}>
+                      <div onClick={() => setOpenAdset(openAdset === s.fb_adset_id ? null : s.fb_adset_id)} style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px 60px 70px 70px 90px 40px", gap: 8, padding: "8px 12px 8px 28px", cursor: "pointer", fontSize: 11.5, alignItems: "center", background: "rgba(0,0,0,0.02)", borderTop: "1px solid rgba(0,0,0,0.04)" }}>
+                        <span><span style={{ color: "#0891b2", marginRight: 4 }}>{openAdset === s.fb_adset_id ? "▼" : "▶"}</span>{s.name} <span style={{ color: "#94a3b8", fontSize: 10 }}>· {s.ads_count} ad(s)</span></span>
+                        <span style={{ textAlign: "right" }}>{s.spend.toFixed(0)}€</span>
+                        <span style={{ textAlign: "right", color: s.ctr >= 1.5 ? "#16a34a" : s.ctr < 0.7 ? "#dc2626" : "#475569" }}>{s.ctr.toFixed(2)}%</span>
+                        <span style={{ textAlign: "right", color: s.frequency >= 4 ? "#dc2626" : "#475569" }}>{s.frequency.toFixed(2)}</span>
+                        <span style={{ textAlign: "right" }}>{s.results}</span>
+                        <span style={{ textAlign: "right" }}>{s.cpa !== null ? `${s.cpa.toFixed(2)}€` : "—"}</span>
+                        <span style={{ textAlign: "right", color: s.roas !== null && s.roas >= 2 ? "#16a34a" : "#475569" }}>{s.roas !== null ? `${s.roas.toFixed(2)}x` : "—"}</span>
+                        <span />
+                      </div>
+                      {openAdset === s.fb_adset_id && s.ads.map(ad => (
+                        <div key={ad.fb_ad_id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px 60px 70px 70px 90px 40px", gap: 8, padding: "7px 12px 7px 44px", fontSize: 11, alignItems: "center", borderTop: "1px solid rgba(0,0,0,0.03)" }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎬 {ad.name}{ad.thumbstop ? <span style={{ marginLeft: 6, fontSize: 9.5, color: "#94a3b8" }}>thumb {ad.thumbstop}%</span> : null}</span>
+                          <span style={{ textAlign: "right" }}>{ad.spend.toFixed(0)}€</span>
+                          <span style={{ textAlign: "right", color: ad.ctr >= 1.5 ? "#16a34a" : ad.ctr < 0.7 ? "#dc2626" : "#475569" }}>{ad.ctr.toFixed(2)}%</span>
+                          <span style={{ textAlign: "right", color: ad.frequency >= 4 ? "#dc2626" : "#475569" }}>{ad.frequency.toFixed(2)}</span>
+                          <span style={{ textAlign: "right" }}>{ad.results}</span>
+                          <span style={{ textAlign: "right" }}>{ad.cpa !== null ? `${ad.cpa.toFixed(2)}€` : "—"}</span>
+                          <span style={{ textAlign: "right", fontWeight: 700, color: ad.roas !== null && ad.roas >= 2 ? "#16a34a" : ad.roas !== null && ad.roas < 1 ? "#dc2626" : "#475569" }}>{ad.roas !== null ? `${ad.roas.toFixed(2)}x` : "—"}</span>
+                          <button onClick={() => pauseAd(ad.fb_ad_id)} disabled={acting === ad.fb_ad_id} style={{ padding: "2px 6px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer", opacity: acting === ad.fb_ad_id ? 0.4 : 1 }}>⏸</button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Tile({ label, value, color }: { label: string; value: any; color: string }) {
+  return <div style={{ padding: 10, background: "#fff", borderRadius: 8, border: "1px solid rgba(0,0,0,0.06)" }}>
+    <div style={{ fontSize: 9.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+    <div style={{ fontSize: 19, fontWeight: 800, color, marginTop: 3, lineHeight: 1 }}>{value}</div>
+  </div>;
 }
 
 // ─── Brief diario JARVIS-style para el traficker ───
