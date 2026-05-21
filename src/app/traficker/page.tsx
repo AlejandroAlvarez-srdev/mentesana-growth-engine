@@ -116,6 +116,7 @@ export default function TrafickerDashboard() {
               {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar</button>}
               {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888", marginLeft: 4 }}>Sync: {new Date(a.last_synced_at).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> : null; })()}
               <div style={{ flex: 1 }} />
+              <a href="/agent/meta-auditor" style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${PURPLE}33`, background: "#fff", color: PURPLE, textDecoration: "none", fontFamily: "inherit" }}>🤖 Auditor</a>
               <button onClick={() => setShowCreateModal(true)} style={btnPrimary}>+ Crear en Meta</button>
               <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Cuenta</button>
             </>
