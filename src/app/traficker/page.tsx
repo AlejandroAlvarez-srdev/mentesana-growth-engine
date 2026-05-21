@@ -12,7 +12,7 @@ type Winner = AdRow & { score: number; reasons: string[] };
 type UrgentAction = { ad_id: string; ad_name: string; action: string; severity: "critical" | "warning"; reason: string };
 
 export default function TrafickerDashboard() {
-  const [me, setMe] = useState<{ name: string; email: string } | null>(null);
+  const [me, setMe] = useState<{ name: string; email: string; via_admin?: boolean } | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAcc, setSelectedAcc] = useState<string>("");
   const [dashboard, setDashboard] = useState<{ totals: any; ads: AdRow[]; winners: Winner[]; urgent_actions: UrgentAction[] } | null>(null);
@@ -31,7 +31,7 @@ export default function TrafickerDashboard() {
   useEffect(() => {
     fetch("/api/traficker/whoami", { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!d?.authenticated) { window.location.href = "/traficker/login"; return; } setMe(d.traficker); });
+      .then(d => { if (!d?.authenticated) { window.location.href = "/traficker/login"; return; } setMe({ ...d.traficker, via_admin: d.via_admin }); });
     const p = new URLSearchParams(window.location.search);
     if (p.get("meta_error")) setMetaError(p.get("meta_error"));
     if (p.get("meta_connected")) { history.replaceState({}, "", "/traficker"); }
@@ -40,6 +40,7 @@ export default function TrafickerDashboard() {
   }, []);
 
   async function logout() {
+    if (me?.via_admin) { window.location.href = "/ceo"; return; }
     await fetch("/api/traficker/auth/logout", { method: "POST", credentials: "include" });
     window.location.href = "/traficker/login";
   }
@@ -74,8 +75,9 @@ export default function TrafickerDashboard() {
           </div>
           <div style={{ flex: 1 }} />
           <NotificationBell api="/api/traficker/notifications" />
+          {me.via_admin && <span style={{ fontSize: 10.5, fontWeight: 800, padding: "3px 8px", background: "linear-gradient(135deg, #6A178C, #8B2FB5)", color: "#fff", borderRadius: 999, letterSpacing: 0.5 }}>👑 MODO ADMIN</span>}
           <span style={{ fontSize: 13, color: "#666" }}>👋 {me.name}</span>
-          <button onClick={logout} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#666", background: "transparent", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 8, cursor: "pointer" }}>Salir</button>
+          <button onClick={logout} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: me.via_admin ? "#6A178C" : "#666", background: "transparent", border: `1px solid ${me.via_admin ? "rgba(106,23,140,0.3)" : "rgba(0,0,0,0.1)"}`, borderRadius: 8, cursor: "pointer" }}>{me.via_admin ? "← Volver al CEO" : "Salir"}</button>
         </div>
       </header>
 
