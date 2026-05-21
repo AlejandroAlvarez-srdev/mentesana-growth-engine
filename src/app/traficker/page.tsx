@@ -50,9 +50,10 @@ export default function TrafickerDashboard() {
     setSyncing(true);
     const r = await fetch("/api/agent/meta/sync", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId, date_preset: "last_30d" }) });
     setSyncing(false);
-    if (!r.ok) { alert("Sync error: " + ((await r.json()).message ?? "")); return; }
     const d = await r.json();
-    alert(`✓ ${d.inserted} insights actualizados`);
+    if (!r.ok) { alert("⚠️ " + (d.message ?? "Error")); return; }
+    if (d.inserted === 0 && d.message) { alert(d.message); return; }
+    alert(d.message ?? `✓ ${d.inserted} insights actualizados`);
     loadAccounts(); loadDash(selectedAcc);
   }
   async function actOn(adId: string, action: "pause" | "resume") {
