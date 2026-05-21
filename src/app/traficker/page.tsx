@@ -20,6 +20,13 @@ export default function TrafickerDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [meta_error, setMetaError] = useState<string | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
+  const [diagResult, setDiagResult] = useState<{ steps: any[]; recommendation: string } | null>(null);
+
+  async function diagnose(accId: string) {
+    const r = await fetch("/api/agent/meta/diagnose-account", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId }) });
+    if (!r.ok) { alert("Error: " + ((await r.json()).message ?? "")); return; }
+    setDiagResult(await r.json());
+  }
 
   const loadAccounts = () => fetch("/api/agent/meta/accounts", { credentials: "include" }).then(r => r.json()).then(d => setAccounts(d.accounts ?? []));
   const loadDash = (accId: string) => {
@@ -109,6 +116,7 @@ export default function TrafickerDashboard() {
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name} {a.currency ? `(${a.currency})` : ""}</option>)}
             </select>
             {selectedAcc && <button onClick={() => sync(selectedAcc)} disabled={syncing} style={{ ...btnSecondary, opacity: syncing ? 0.6 : 1 }}>{syncing ? "Sincronizando…" : "↻ Sincronizar 30d"}</button>}
+            {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar cuenta</button>}
             {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888" }}>Último sync: {new Date(a.last_synced_at).toLocaleString("es-ES")}</span> : null; })()}
           </section>
 
@@ -206,6 +214,27 @@ export default function TrafickerDashboard() {
       )}
 
       {showTokenModal && <TokenConnectModal onClose={() => setShowTokenModal(false)} onDone={() => { setShowTokenModal(false); loadAccounts(); }} />}
+
+      {diagResult && (
+        <div onClick={() => setDiagResult(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, padding: 24, maxWidth: 640, width: "100%", maxHeight: "90vh", overflow: "auto" }}>
+            <h2 style={{ margin: "0 0 14px", fontSize: 19, color: PURPLE }}>🩺 Diagnóstico de la cuenta Meta</h2>
+            <div style={{ padding: 14, background: diagResult.recommendation.includes("✅") ? "rgba(16,185,129,0.08)" : diagResult.recommendation.includes("🔴") ? "rgba(220,38,38,0.08)" : "rgba(217,119,6,0.08)", borderRadius: 10, marginBottom: 14, fontSize: 13.5, fontWeight: 700, lineHeight: 1.5 }}>{diagResult.recommendation}</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {diagResult.steps.map((s, i) => (
+                <div key={i} style={{ padding: 10, background: "#fff", borderRadius: 8, borderLeft: `4px solid ${s.status === "ok" ? "#16a34a" : s.status === "warn" ? "#d97706" : "#dc2626"}`, border: "1px solid rgba(0,0,0,0.06)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                    <strong style={{ fontSize: 12.5 }}>{s.status === "ok" ? "✓" : s.status === "warn" ? "⚠️" : "✗"} {s.name}</strong>
+                    <span style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 4, background: s.status === "ok" ? "rgba(16,163,74,0.14)" : s.status === "warn" ? "rgba(217,119,6,0.14)" : "rgba(220,38,38,0.14)", color: s.status === "ok" ? "#065f46" : s.status === "warn" ? "#92400e" : "#991b1b", fontWeight: 800, textTransform: "uppercase" }}>{s.status}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#475569", lineHeight: 1.55, wordBreak: "break-word" }}>{s.detail}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 14, textAlign: "right" }}><button onClick={() => setDiagResult(null)} style={{ padding: "9px 18px", background: PURPLE, color: "#fff", border: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>Cerrar</button></div>
+          </div>
+        </div>
+      )}
 
       {accounts.length > 0 && (
         <section style={{ marginTop: 24 }}>
