@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import MyTasks from "@/components/MyTasks";
 import NotificationBell from "@/components/NotificationBell";
+import PanelTabs, { usePanelTab } from "@/components/PanelTabs";
 
 const PURPLE = "#6A178C";
 
 type Account = { id: string; fb_account_id: string; name: string; currency: string | null; business_name: string | null; last_synced_at: string | null };
-type AdRow = { fb_ad_id: string; ad_name: string; campaign_name: string; impressions: number; clicks: number; spend: number; ctr: number; frequency: number; thumbstop_rate: number; results: number; cost_per_result: number | null; roas: number | null };
+type AdRow = { fb_ad_id: string; ad_name: string; campaign_name: string; impressions: number; clicks: number; spend: number; ctr: number; frequency: number; thumbstop_rate: number; results: number; cost_per_result: number | null; roas: number | null; effective_status?: string };
 type Winner = AdRow & { score: number; reasons: string[] };
 type UrgentAction = { ad_id: string; ad_name: string; action: string; severity: "critical" | "warning"; reason: string };
 
@@ -21,6 +22,8 @@ export default function TrafickerDashboard() {
   const [meta_error, setMetaError] = useState<string | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [diagResult, setDiagResult] = useState<{ steps: any[]; recommendation: string } | null>(null);
+  const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
+  const [tab, setTab] = usePanelTab("resumen");
 
   async function diagnose(accId: string) {
     const r = await fetch("/api/agent/meta/diagnose-account", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId }) });
@@ -68,7 +71,14 @@ export default function TrafickerDashboard() {
     if (!confirm(`¿${action === "pause" ? "Pausar" : "Reactivar"} este ad?`)) return;
     const r = await fetch("/api/agent/meta/action", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: selectedAcc, fb_object_id: adId, action, reason: "desde panel traficker" }) });
     if (!r.ok) { alert("Error"); return; }
-    alert("✓ Aplicado");
+    // Estado optimista: marca el ad como pausado/reanudado al instante.
+    setPausedIds(prev => {
+      const next = new Set(prev);
+      if (action === "pause") next.add(adId); else next.delete(adId);
+      return next;
+    });
+    // Refresca dashboard en background para confirmar el estado real desde Meta.
+    setTimeout(() => loadDash(selectedAcc), 2500);
   }
 
   if (!me) return <div style={{ padding: 40, textAlign: "center", color: "#888" }}>…</div>;
@@ -89,21 +99,33 @@ export default function TrafickerDashboard() {
         </div>
       </header>
 
-    <main style={{ maxWidth: 1300, margin: "0 auto", padding: 20 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 22, color: "#1a1a2e", fontWeight: 800 }}>📊 Traficker · Meta Ads</h1>
-        <button onClick={connectMeta} style={btnPrimary}>+ Conectar cuenta Meta</button>
-      </header>
-
-      <MyTasks api="/api/traficker/tasks" />
-      <DailyBrief accountId={selectedAcc} />
-      <BreakdownDashboard accountId={selectedAcc} />
-      <ExtrasDashboard accountId={selectedAcc} />
+    <main style={{ maxWidth: 1300, margin: "0 auto", padding: "16px 20px 40px" }}>
+      {/* ─── Barra de control sticky: cuenta + sync + diagnose ─── */}
+      <section style={{ position: "sticky", top: 60, zIndex: 41, background: "rgba(255,250,242,0.95)", backdropFilter: "blur(10px)", marginBottom: 10, padding: "10px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: 18, color: "#1a1a2e", fontWeight: 800, marginRight: 6 }}>📊 Meta Ads</h1>
+          {accounts.length > 0 ? (
+            <>
+              <select value={selectedAcc} onChange={e => { setSelectedAcc(e.target.value); loadDash(e.target.value); }} style={{ padding: "9px 12px", fontSize: 13, fontWeight: 600, border: `2px solid ${selectedAcc ? PURPLE : "rgba(0,0,0,0.12)"}`, borderRadius: 10, background: "#fff", fontFamily: "inherit", color: "#1a1a2e", minWidth: 240 }}>
+                <option value="">📂 Todas las cuentas</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} {a.currency ? `(${a.currency})` : ""}</option>)}
+              </select>
+              {selectedAcc && <button onClick={() => sync(selectedAcc)} disabled={syncing} style={{ ...btnSecondary, opacity: syncing ? 0.6 : 1 }}>{syncing ? "↻ Sincronizando…" : "↻ Sync 30d"}</button>}
+              {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar</button>}
+              {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888", marginLeft: 4 }}>Sync: {new Date(a.last_synced_at).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> : null; })()}
+              <div style={{ flex: 1 }} />
+              <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Nueva cuenta</button>
+            </>
+          ) : (
+            <button onClick={connectMeta} style={btnPrimary}>+ Conectar cuenta Meta</button>
+          )}
+        </div>
+      </section>
 
       {meta_error && <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>⚠️ Error: {meta_error}</div>}
 
       {accounts.length === 0 ? (
-        <div style={{ padding: 40, background: "#fff", borderRadius: 14, textAlign: "center", border: "1px dashed rgba(106,23,140,0.3)" }}>
+        <div style={{ padding: 40, background: "#fff", borderRadius: 14, textAlign: "center", border: "1px dashed rgba(106,23,140,0.3)", marginTop: 20 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📈</div>
           <h2 style={{ margin: "0 0 6px", color: PURPLE }}>Conecta tu primera cuenta de Meta Ads</h2>
           <p style={{ margin: "0 0 14px", color: "#666", fontSize: 13 }}>Pega un access token (long-lived o System User) y autodetectamos tus cuentas publicitarias.</p>
@@ -112,106 +134,171 @@ export default function TrafickerDashboard() {
         </div>
       ) : (
         <>
-          <section style={{ marginBottom: 14, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select value={selectedAcc} onChange={e => { setSelectedAcc(e.target.value); loadDash(e.target.value); }} style={{ padding: "8px 12px", fontSize: 13, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, background: "#fff", fontFamily: "inherit", color: "#1a1a2e", minWidth: 280 }}>
-              <option value="">Todas las cuentas</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name} {a.currency ? `(${a.currency})` : ""}</option>)}
-            </select>
-            {selectedAcc && <button onClick={() => sync(selectedAcc)} disabled={syncing} style={{ ...btnSecondary, opacity: syncing ? 0.6 : 1 }}>{syncing ? "Sincronizando…" : "↻ Sincronizar 30d"}</button>}
-            {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar cuenta</button>}
-            {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888" }}>Último sync: {new Date(a.last_synced_at).toLocaleString("es-ES")}</span> : null; })()}
-          </section>
+          {/* ─── Tabs principal ─── */}
+          <PanelTabs
+            active={tab}
+            onChange={setTab}
+            tabs={[
+              { key: "resumen", label: "Resumen", emoji: "📊" },
+              { key: "urgentes", label: "Urgentes", emoji: "🚨", badge: dashboard?.urgent_actions?.length },
+              { key: "winners", label: "Ganadores", emoji: "🏆", badge: dashboard?.winners?.length },
+              { key: "ads", label: "Todos los ads", emoji: "📋", badge: dashboard?.ads?.length },
+              { key: "drilldown", label: "Drill-down", emoji: "📈" },
+              { key: "extras", label: "Extras", emoji: "💡" },
+              { key: "brief", label: "Daily brief", emoji: "📨" },
+              { key: "cuentas", label: "Cuentas", emoji: "⚙️", badge: accounts.length },
+              { key: "tareas", label: "Tareas", emoji: "📋" },
+            ]}
+          />
 
-          {dashboard?.urgent_actions && dashboard.urgent_actions.length > 0 && (
-            <section style={{ marginBottom: 16 }}>
-              <h2 style={hd}>🚨 Acciones urgentes ({dashboard.urgent_actions.length})</h2>
+          {/* ─── Resumen: KPIs + top winners + urgentes preview ─── */}
+          {tab === "resumen" && (
+            <>
+              {dashboard?.totals && (
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
+                  <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
+                  <Kpi label="👁 Impresiones" value={dashboard.totals.impressions.toLocaleString("es-ES")} color="#0891b2" />
+                  <Kpi label="🖱 CTR" value={`${dashboard.totals.ctr.toFixed(2)}%`} color={dashboard.totals.ctr >= 1.5 ? "#16a34a" : dashboard.totals.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
+                  <Kpi label="🎯 Resultados" value={dashboard.totals.results} color="#16a34a" />
+                  <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
+                  <Kpi label="🚀 ROAS" value={dashboard.totals.roas ? `${dashboard.totals.roas.toFixed(2)}x` : "—"} color={dashboard.totals.roas && dashboard.totals.roas >= 2 ? "#16a34a" : "#d97706"} />
+                </section>
+              )}
+              {dashboard?.urgent_actions && dashboard.urgent_actions.length > 0 && (
+                <section style={{ marginBottom: 16, padding: 12, background: "#fff", borderRadius: 12, border: "2px solid #fee2e2" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                    <strong style={{ color: "#991b1b" }}>🚨 {dashboard.urgent_actions.length} acciones urgentes</strong>
+                    <button onClick={() => setTab("urgentes")} style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Ver todas →</button>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, color: "#666" }}>Tienes ads que deberías pausar o revisar.</p>
+                </section>
+              )}
+              {dashboard?.winners && dashboard.winners.length > 0 && (
+                <section style={{ marginBottom: 16, padding: 12, background: "#fff", borderRadius: 12, border: `2px solid ${PURPLE}22` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                    <strong style={{ color: PURPLE }}>🏆 {dashboard.winners.length} creativos ganadores</strong>
+                    <button onClick={() => setTab("winners")} style={{ background: "transparent", border: "none", color: PURPLE, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Ver todos →</button>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#666" }}>Top: <strong>{dashboard.winners[0].ad_name}</strong> · Score {dashboard.winners[0].score}</div>
+                </section>
+              )}
+              {loadingDash && <div style={{ color: "#888", padding: 20, textAlign: "center" }}>Cargando…</div>}
+              {!loadingDash && dashboard && dashboard.ads.length === 0 && (
+                <div style={{ padding: 30, background: "#fff", borderRadius: 12, color: "#666", textAlign: "center" }}>
+                  Sin insights aún. Pulsa <strong>↻ Sync 30d</strong> arriba para cargar datos.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ─── Urgentes ─── */}
+          {tab === "urgentes" && (
+            dashboard?.urgent_actions && dashboard.urgent_actions.length > 0 ? (
+              <section>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {dashboard.urgent_actions.map((u, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, background: "#fff", borderRadius: 10, borderLeft: `4px solid ${u.severity === "critical" ? "#dc2626" : "#d97706"}` }}>
+                      <div style={{ flex: 1 }}>
+                        <strong style={{ fontSize: 13, color: u.severity === "critical" ? "#991b1b" : "#92400e" }}>{u.action}</strong>
+                        <div style={{ fontSize: 11.5, color: "#666", marginTop: 2 }}>{u.ad_name}</div>
+                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{u.reason}</div>
+                      </div>
+                      {u.action.startsWith("Pausar") && (pausedIds.has(u.ad_id) ? <span style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#475569", background: "rgba(0,0,0,0.05)", borderRadius: 6 }}>⏸ PAUSADO</span> : <button onClick={() => actOn(u.ad_id, "pause")} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#fff", background: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer" }}>⏸ Pausar</button>)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : <EmptyTab emoji="✅" title="Sin acciones urgentes" sub="Tu cuenta está sana. Bien hecho." />
+          )}
+
+          {/* ─── Winners ─── */}
+          {tab === "winners" && (
+            dashboard?.winners && dashboard.winners.length > 0 ? (
+              <section>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {dashboard.winners.map(w => (
+                    <div key={w.fb_ad_id} style={{ padding: 12, background: "#fff", borderRadius: 10, border: `2px solid ${PURPLE}33` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                        <strong style={{ fontSize: 13 }}>{w.ad_name}</strong>
+                        <span style={{ padding: "2px 8px", background: PURPLE, color: "#fff", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>SCORE {w.score}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{w.campaign_name}</div>
+                      <div style={{ display: "flex", gap: 10, fontSize: 11, marginTop: 6, flexWrap: "wrap", color: "#475569" }}>
+                        <span>💰 {w.spend.toFixed(0)}€</span>
+                        <span>🖱 CTR {w.ctr.toFixed(2)}%</span>
+                        <span>👁 Thumbstop {w.thumbstop_rate.toFixed(1)}%</span>
+                        <span>📊 Frec {w.frequency.toFixed(2)}</span>
+                        {w.cost_per_result && <span>💵 CPA {w.cost_per_result.toFixed(2)}€</span>}
+                        {w.roas && <span>🚀 ROAS {w.roas.toFixed(2)}x</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                        {w.reasons.map((r, i) => <span key={i} style={{ fontSize: 10.5, padding: "2px 6px", background: "rgba(16,185,129,0.14)", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>✓ {r}</span>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : <EmptyTab emoji="🏆" title="Sin ganadores aún" sub="Cuando un ad rinda bien, aparecerá aquí con su score." />
+          )}
+
+          {/* ─── Todos los ads ─── */}
+          {tab === "ads" && (
+            dashboard?.ads && dashboard.ads.length > 0 ? (
+              <section>
+                <div style={{ background: "#fff", borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "rgba(106,23,140,0.04)" }}>
+                      <Th>Ad</Th><Th align="center">Estado</Th><Th align="right">Spend</Th><Th align="right">CTR</Th><Th align="right">Frec</Th><Th align="right">Thumbstop</Th><Th align="right">CPA</Th><Th align="right">ROAS</Th><Th></Th>
+                    </tr></thead>
+                    <tbody>
+                      {dashboard.ads.slice(0, 100).map(a => {
+                        const isPaused = pausedIds.has(a.fb_ad_id) || a.effective_status === "PAUSED";
+                        return (
+                          <tr key={a.fb_ad_id} style={{ borderTop: "1px solid rgba(0,0,0,0.05)", opacity: isPaused ? 0.55 : 1 }}>
+                            <Td><div style={{ fontWeight: 700, textDecoration: isPaused ? "line-through" : undefined }}>{a.ad_name}</div><div style={{ fontSize: 10, color: "#888" }}>{a.campaign_name}</div></Td>
+                            <Td align="center">{isPaused ? <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", background: "rgba(0,0,0,0.06)", color: "#475569", borderRadius: 4 }}>⏸ PAUSED</span> : <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", background: "rgba(16,163,74,0.14)", color: "#065f46", borderRadius: 4 }}>● ACTIVE</span>}</Td>
+                            <Td align="right">{a.spend.toFixed(0)}€</Td>
+                            <Td align="right" style={{ color: a.ctr >= 1.5 ? "#16a34a" : a.ctr < 0.7 ? "#dc2626" : "#475569" }}>{a.ctr.toFixed(2)}%</Td>
+                            <Td align="right" style={{ color: a.frequency >= 4 ? "#dc2626" : "#475569" }}>{a.frequency.toFixed(2)}</Td>
+                            <Td align="right">{a.thumbstop_rate.toFixed(1)}%</Td>
+                            <Td align="right">{a.cost_per_result ? `${a.cost_per_result.toFixed(2)}€` : "—"}</Td>
+                            <Td align="right" style={{ color: a.roas && a.roas >= 2 ? "#16a34a" : "#475569" }}>{a.roas ? `${a.roas.toFixed(2)}x` : "—"}</Td>
+                            <Td>{isPaused ? <button onClick={() => actOn(a.fb_ad_id, "resume")} style={{ padding: "4px 8px", fontSize: 10, color: "#16a34a", background: "transparent", border: "1px solid rgba(16,163,74,0.3)", borderRadius: 4, cursor: "pointer" }}>▶</button> : <button onClick={() => actOn(a.fb_ad_id, "pause")} style={{ padding: "4px 8px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer" }}>⏸</button>}</Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : <EmptyTab emoji="📋" title="Sin ads cargados" sub="Pulsa ↻ Sync 30d arriba para traerlos desde Meta." />
+          )}
+
+          {/* ─── Drill-down · Extras · Daily brief · Cuentas · Tareas ─── */}
+          {tab === "drilldown" && <BreakdownDashboard accountId={selectedAcc} />}
+          {tab === "extras" && <ExtrasDashboard accountId={selectedAcc} />}
+          {tab === "brief" && <DailyBrief accountId={selectedAcc} />}
+          {tab === "cuentas" && (
+            <section style={{ background: "#fff", borderRadius: 12, padding: 16, border: "1px solid rgba(0,0,0,0.06)" }}>
+              <h3 style={{ ...hd, marginTop: 0 }}>Cuentas conectadas ({accounts.length})</h3>
               <div style={{ display: "grid", gap: 6 }}>
-                {dashboard.urgent_actions.map((u, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, background: "#fff", borderRadius: 10, borderLeft: `4px solid ${u.severity === "critical" ? "#dc2626" : "#d97706"}` }}>
-                    <div style={{ flex: 1 }}>
-                      <strong style={{ fontSize: 13, color: u.severity === "critical" ? "#991b1b" : "#92400e" }}>{u.action}</strong>
-                      <div style={{ fontSize: 11.5, color: "#666", marginTop: 2 }}>{u.ad_name}</div>
-                      <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{u.reason}</div>
+                {accounts.map(a => (
+                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 10, background: "rgba(106,23,140,0.03)", borderRadius: 8, gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 200 }}>
+                      <strong style={{ fontSize: 13 }}>{a.name}</strong>
+                      <div style={{ fontSize: 11, color: "#666" }}>act_{a.fb_account_id}{a.business_name && ` · ${a.business_name}`}{a.currency && ` · ${a.currency}`}</div>
+                      {a.last_synced_at && <div style={{ fontSize: 10.5, color: "#888", marginTop: 2 }}>Último sync: {new Date(a.last_synced_at).toLocaleString("es-ES")}</div>}
                     </div>
-                    {u.action.startsWith("Pausar") && <button onClick={() => actOn(u.ad_id, "pause")} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#fff", background: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer" }}>⏸ Pausar</button>}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {dashboard?.totals && (
-            <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
-              <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
-              <Kpi label="👁 Impresiones" value={dashboard.totals.impressions.toLocaleString("es-ES")} color="#0891b2" />
-              <Kpi label="🖱 CTR" value={`${dashboard.totals.ctr.toFixed(2)}%`} color={dashboard.totals.ctr >= 1.5 ? "#16a34a" : dashboard.totals.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
-              <Kpi label="🎯 Resultados" value={dashboard.totals.results} color="#16a34a" />
-              <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
-              <Kpi label="🚀 ROAS" value={dashboard.totals.roas ? `${dashboard.totals.roas.toFixed(2)}x` : "—"} color={dashboard.totals.roas && dashboard.totals.roas >= 2 ? "#16a34a" : "#d97706"} />
-            </section>
-          )}
-
-          {dashboard?.winners && dashboard.winners.length > 0 && (
-            <section style={{ marginBottom: 16 }}>
-              <h2 style={hd}>🏆 Creativos ganadores (top {dashboard.winners.length})</h2>
-              <div style={{ display: "grid", gap: 8 }}>
-                {dashboard.winners.map(w => (
-                  <div key={w.fb_ad_id} style={{ padding: 12, background: "#fff", borderRadius: 10, border: `2px solid ${PURPLE}33` }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                      <strong style={{ fontSize: 13 }}>{w.ad_name}</strong>
-                      <span style={{ padding: "2px 8px", background: PURPLE, color: "#fff", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>SCORE {w.score}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{w.campaign_name}</div>
-                    <div style={{ display: "flex", gap: 10, fontSize: 11, marginTop: 6, flexWrap: "wrap", color: "#475569" }}>
-                      <span>💰 {w.spend.toFixed(0)}€</span>
-                      <span>🖱 CTR {w.ctr.toFixed(2)}%</span>
-                      <span>👁 Thumbstop {w.thumbstop_rate.toFixed(1)}%</span>
-                      <span>📊 Frec {w.frequency.toFixed(2)}</span>
-                      {w.cost_per_result && <span>💵 CPA {w.cost_per_result.toFixed(2)}€</span>}
-                      {w.roas && <span>🚀 ROAS {w.roas.toFixed(2)}x</span>}
-                    </div>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-                      {w.reasons.map((r, i) => <span key={i} style={{ fontSize: 10.5, padding: "2px 6px", background: "rgba(16,185,129,0.14)", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>✓ {r}</span>)}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => sync(a.id)} disabled={syncing} style={{ ...btnSecondary, padding: "5px 10px", fontSize: 11 }}>↻ Sync</button>
+                      <button onClick={() => diagnose(a.id)} style={{ ...btnSecondary, padding: "5px 10px", fontSize: 11, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺</button>
                     </div>
                   </div>
                 ))}
               </div>
             </section>
           )}
-
-          {dashboard?.ads && dashboard.ads.length > 0 && (
-            <section>
-              <h2 style={hd}>📋 Todos los ads ({dashboard.ads.length})</h2>
-              <div style={{ background: "#fff", borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead><tr style={{ background: "rgba(106,23,140,0.04)" }}>
-                    <Th>Ad</Th><Th align="right">Spend</Th><Th align="right">CTR</Th><Th align="right">Frec</Th><Th align="right">Thumbstop</Th><Th align="right">CPA</Th><Th align="right">ROAS</Th><Th></Th>
-                  </tr></thead>
-                  <tbody>
-                    {dashboard.ads.slice(0, 50).map(a => (
-                      <tr key={a.fb_ad_id} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-                        <Td><div style={{ fontWeight: 700 }}>{a.ad_name}</div><div style={{ fontSize: 10, color: "#888" }}>{a.campaign_name}</div></Td>
-                        <Td align="right">{a.spend.toFixed(0)}€</Td>
-                        <Td align="right" style={{ color: a.ctr >= 1.5 ? "#16a34a" : a.ctr < 0.7 ? "#dc2626" : "#475569" }}>{a.ctr.toFixed(2)}%</Td>
-                        <Td align="right" style={{ color: a.frequency >= 4 ? "#dc2626" : "#475569" }}>{a.frequency.toFixed(2)}</Td>
-                        <Td align="right">{a.thumbstop_rate.toFixed(1)}%</Td>
-                        <Td align="right">{a.cost_per_result ? `${a.cost_per_result.toFixed(2)}€` : "—"}</Td>
-                        <Td align="right" style={{ color: a.roas && a.roas >= 2 ? "#16a34a" : "#475569" }}>{a.roas ? `${a.roas.toFixed(2)}x` : "—"}</Td>
-                        <Td><button onClick={() => actOn(a.fb_ad_id, "pause")} style={{ padding: "4px 8px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer" }}>⏸</button></Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {loadingDash && <div style={{ color: "#888", marginTop: 12 }}>Cargando…</div>}
-          {!loadingDash && dashboard && dashboard.ads.length === 0 && (
-            <div style={{ padding: 30, background: "#fff", borderRadius: 12, color: "#aaa", textAlign: "center" }}>
-              Sin insights aún. Pulsa <strong>↻ Sincronizar 30d</strong> en una cuenta.
-            </div>
-          )}
+          {tab === "tareas" && <MyTasks api="/api/traficker/tasks" />}
         </>
       )}
 
@@ -238,19 +325,6 @@ export default function TrafickerDashboard() {
         </div>
       )}
 
-      {accounts.length > 0 && (
-        <section style={{ marginTop: 24 }}>
-          <h3 style={{ ...hd, fontSize: 11 }}>Cuentas conectadas</h3>
-          <div style={{ display: "grid", gap: 4 }}>
-            {accounts.map(a => (
-              <div key={a.id} style={{ padding: 8, background: "#fff", borderRadius: 6, fontSize: 12, display: "flex", justifyContent: "space-between", gap: 6 }}>
-                <span><strong>{a.name}</strong> <span style={{ color: "#888" }}>· act_{a.fb_account_id}{a.business_name && ` · ${a.business_name}`}{a.currency && ` · ${a.currency}`}</span></span>
-                <button onClick={() => sync(a.id)} disabled={syncing} style={{ ...btnSecondary, padding: "3px 8px", fontSize: 10 }}>↻ Sync</button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </main>
     </div>
   );
@@ -801,6 +875,16 @@ function Kpi({ label, value, color }: { label: string; value: any; color: string
 }
 const Th = ({ children, align = "left" }: { children?: React.ReactNode; align?: "left" | "center" | "right" }) => <th style={{ padding: "8px 10px", textAlign: align, fontSize: 10, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.4 }}>{children}</th>;
 const Td = ({ children, align = "left", style }: { children?: React.ReactNode; align?: "left" | "center" | "right"; style?: React.CSSProperties }) => <td style={{ padding: "8px 10px", textAlign: align, verticalAlign: "middle", ...style }}>{children}</td>;
+function EmptyTab({ emoji, title, sub }: { emoji: string; title: string; sub: string }) {
+  return (
+    <div style={{ padding: "50px 20px", background: "#fff", borderRadius: 14, textAlign: "center", border: "1px dashed rgba(0,0,0,0.08)" }}>
+      <div style={{ fontSize: 40, marginBottom: 10 }}>{emoji}</div>
+      <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#1a1a2e", fontWeight: 800 }}>{title}</h3>
+      <p style={{ margin: 0, fontSize: 13, color: "#666" }}>{sub}</p>
+    </div>
+  );
+}
+
 const hd: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#1a1a2e", margin: "0 0 8px" };
 const btnPrimary: React.CSSProperties = { padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: "none", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, color: "#fff", cursor: "pointer", fontFamily: "inherit" };
 const btnSecondary: React.CSSProperties = { padding: "7px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "1px solid rgba(0,0,0,0.12)", background: "#fff", color: "#475569", cursor: "pointer", fontFamily: "inherit" };
