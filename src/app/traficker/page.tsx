@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import MyTasks from "@/components/MyTasks";
 import NotificationBell from "@/components/NotificationBell";
 import PanelTabs, { usePanelTab } from "@/components/PanelTabs";
+import CreateCampaignModal from "./_components/CreateCampaignModal";
 
 const PURPLE = "#6A178C";
 
@@ -24,6 +25,7 @@ export default function TrafickerDashboard() {
   const [diagResult, setDiagResult] = useState<{ steps: any[]; recommendation: string } | null>(null);
   const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = usePanelTab("resumen");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   async function diagnose(accId: string) {
     const r = await fetch("/api/agent/meta/diagnose-account", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId }) });
@@ -114,7 +116,8 @@ export default function TrafickerDashboard() {
               {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar</button>}
               {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888", marginLeft: 4 }}>Sync: {new Date(a.last_synced_at).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> : null; })()}
               <div style={{ flex: 1 }} />
-              <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Nueva cuenta</button>
+              <button onClick={() => setShowCreateModal(true)} style={btnPrimary}>+ Crear en Meta</button>
+              <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Cuenta</button>
             </>
           ) : (
             <button onClick={connectMeta} style={btnPrimary}>+ Conectar cuenta Meta</button>
@@ -303,6 +306,7 @@ export default function TrafickerDashboard() {
       )}
 
       {showTokenModal && <TokenConnectModal onClose={() => setShowTokenModal(false)} onDone={() => { setShowTokenModal(false); loadAccounts(); }} />}
+      {showCreateModal && <CreateCampaignModal accountId={selectedAcc} accounts={accounts.map(a => ({ id: a.id, fb_account_id: a.fb_account_id, name: a.name, currency: a.currency }))} onClose={() => setShowCreateModal(false)} />}
 
       {diagResult && (
         <div onClick={() => setDiagResult(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
