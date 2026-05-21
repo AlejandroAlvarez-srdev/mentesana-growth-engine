@@ -88,6 +88,7 @@ export default function TrafickerDashboard() {
       </header>
 
       <MyTasks api="/api/traficker/tasks" />
+      <DailyBrief accountId={selectedAcc} />
 
       {meta_error && <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>⚠️ Error: {meta_error}</div>}
 
@@ -219,6 +220,107 @@ export default function TrafickerDashboard() {
         </section>
       )}
     </main>
+    </div>
+  );
+}
+
+// ─── Brief diario JARVIS-style para el traficker ───
+type DailyAction = { priority: "alta" | "media" | "baja"; emoji: string; title: string; detail: string; ad_id?: string; suggested: "pausar" | "escalar" | "refrescar" | "revisar" | null };
+type DailyBriefData = {
+  yesterday_summary: { spend: number; results: number; cpa: number | null; roas: number | null; delta_spend_pct: number | null; delta_results_pct: number | null };
+  insights: string[];
+  actions: DailyAction[];
+  summary: { ads_active_week: number; ads_no_conversion: number; spend_week: number; spend_prev_week: number };
+};
+
+function DailyBrief({ accountId }: { accountId: string }) {
+  const [d, setD] = useState<DailyBriefData | null>(null);
+  const [acting, setActing] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = accountId ? `/api/agent/meta/daily-brief?account_id=${accountId}` : "/api/agent/meta/daily-brief";
+    fetch(url, { credentials: "include" }).then(r => r.ok ? r.json() : null).then(setD);
+  }, [accountId]);
+
+  async function applyAction(adId: string, action: "pause" | "resume") {
+    if (!accountId) { alert("Selecciona una cuenta arriba antes."); return; }
+    if (!confirm(`¿${action === "pause" ? "Pausar" : "Reactivar"} este anuncio?`)) return;
+    setActing(adId);
+    const r = await fetch("/api/agent/meta/action", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accountId, fb_object_id: adId, action, reason: "desde daily-brief" }) });
+    setActing(null);
+    alert(r.ok ? "✓ Aplicado" : "Error");
+  }
+
+  if (!d) return null;
+
+  const ys = d.yesterday_summary;
+  const wdelta = d.summary.spend_prev_week > 0 ? ((d.summary.spend_week - d.summary.spend_prev_week) / d.summary.spend_prev_week) * 100 : null;
+
+  return (
+    <section style={{ marginBottom: 22, padding: 18, borderRadius: 16, background: "linear-gradient(135deg, #1a0a1f 0%, #2D0F44 100%)", color: "#fff", boxShadow: "0 12px 32px rgba(106,23,140,0.25)", border: "1px solid rgba(255,215,0,0.2)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 11, fontWeight: 900, color: "#FCD34D", letterSpacing: 2 }}>⚡ BRIEF DIARIO</span>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>· {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}</span>
+      </div>
+
+      {/* Resumen ayer */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <BriefStat label="Gasto ayer" value={`${ys.spend.toFixed(0)}€`} delta={ys.delta_spend_pct} />
+        <BriefStat label="Conversiones" value={ys.results} delta={ys.delta_results_pct} />
+        <BriefStat label="CPA" value={ys.cpa !== null ? `${ys.cpa.toFixed(2)}€` : "—"} color={ys.cpa && ys.cpa > 25 ? "#F87171" : ys.cpa && ys.cpa < 10 ? "#10B981" : "#FBBF24"} />
+        <BriefStat label="ROAS" value={ys.roas !== null ? `${ys.roas.toFixed(2)}x` : "—"} color={ys.roas && ys.roas >= 2 ? "#10B981" : ys.roas && ys.roas < 1 ? "#F87171" : "#FBBF24"} />
+        <BriefStat label="Esta semana" value={`${d.summary.spend_week.toFixed(0)}€`} delta={wdelta} small />
+      </div>
+
+      {/* Insights narrativos */}
+      {d.insights.length > 0 && (
+        <div style={{ marginBottom: 14, padding: 12, background: "rgba(255,255,255,0.04)", borderRadius: 10, borderLeft: "3px solid #FCD34D" }}>
+          <div style={{ fontSize: 10, fontWeight: 900, color: "#FCD34D", letterSpacing: 1, marginBottom: 6 }}>🛰️ J.A.R.V.I.S. OBSERVA</div>
+          {d.insights.map((ins, i) => (
+            <p key={i} style={{ margin: i === 0 ? "0" : "4px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.92)", lineHeight: 1.5 }}>· {ins}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Acciones priorizadas */}
+      <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: 1, marginBottom: 8 }}>📋 ACCIONES DEL DÍA · {d.actions.length}</div>
+      {d.actions.length === 0 ? (
+        <div style={{ padding: 16, background: "rgba(16,185,129,0.1)", borderRadius: 10, color: "#10B981", fontSize: 13, fontWeight: 700, textAlign: "center" }}>✓ Sin acciones urgentes. Todo en orden, señor.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {d.actions.map((a, i) => {
+            const priColor = a.priority === "alta" ? "#F87171" : a.priority === "media" ? "#FBBF24" : "#94a3b8";
+            const sugBg = a.suggested === "escalar" ? "#10B981" : a.suggested === "pausar" ? "#DC2626" : a.suggested === "refrescar" ? "#0891B2" : "#6B7280";
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, background: "rgba(255,255,255,0.04)", borderRadius: 8, borderLeft: `3px solid ${priColor}` }}>
+                <span style={{ fontSize: 18 }}>{a.emoji}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: 12.5, color: "#fff" }}>{a.title}</strong>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{a.detail}</div>
+                </div>
+                {a.suggested && a.ad_id && (
+                  <button onClick={() => applyAction(a.ad_id!, a.suggested === "escalar" || a.suggested === "refrescar" ? "resume" : "pause")} disabled={acting === a.ad_id} style={{ padding: "5px 11px", fontSize: 11, fontWeight: 800, color: "#fff", background: sugBg, border: "none", borderRadius: 6, cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.5, opacity: acting === a.ad_id ? 0.5 : 1 }}>
+                    {a.suggested === "pausar" ? "⏸ Pausar" : a.suggested === "escalar" ? "🚀 Escalar" : a.suggested === "refrescar" ? "🔄 Refresh" : "Revisar"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BriefStat({ label, value, delta, color, small }: { label: string; value: any; delta?: number | null; color?: string; small?: boolean }) {
+  const dc = delta === null || delta === undefined ? null : delta >= 0 ? "#10B981" : "#F87171";
+  return (
+    <div>
+      <div style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: small ? 18 : 24, fontWeight: 900, color: color ?? "#fff", lineHeight: 1, letterSpacing: -0.5 }}>{value}</div>
+      {dc && delta !== null && delta !== undefined && (
+        <div style={{ fontSize: 11, color: dc, marginTop: 3, fontWeight: 700 }}>{delta >= 0 ? "↑" : "↓"} {Math.abs(delta).toFixed(0)}%</div>
+      )}
     </div>
   );
 }
