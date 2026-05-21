@@ -429,6 +429,7 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
   const [reqAd, setReqAd] = useState<any>(null);
+  const [previewAd, setPreviewAd] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -514,6 +515,7 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
                           <span style={{ textAlign: "right" }}>{ad.results}</span>
                           <span style={{ textAlign: "right" }}>{ad.cpa !== null ? `${ad.cpa.toFixed(2)}€` : "—"}</span>
                           <span style={{ textAlign: "right", fontWeight: 700, color: ad.roas !== null && ad.roas >= 2 ? "#16a34a" : ad.roas !== null && ad.roas < 1 ? "#dc2626" : "#475569" }}>{ad.roas !== null ? `${ad.roas.toFixed(2)}x` : "—"}</span>
+                          <button onClick={() => setPreviewAd(ad.fb_ad_id)} title="Ver preview del anuncio" style={{ padding: "2px 6px", fontSize: 10, color: "#0891b2", background: "transparent", border: "1px solid rgba(8,145,178,0.3)", borderRadius: 4, cursor: "pointer", marginRight: 4 }}>👁</button>
                           <button onClick={() => setReqAd({ ad_name: ad.name, fb_ad_id: ad.fb_ad_id, spend: ad.spend, ctr: ad.ctr, roas: ad.roas, cpa: ad.cpa, frequency: ad.frequency, results: ad.results })} title="Pedir creativo al video maker" style={{ padding: "2px 6px", fontSize: 10, color: PURPLE, background: "transparent", border: `1px solid ${PURPLE}55`, borderRadius: 4, cursor: "pointer", marginRight: 4 }}>📨</button>
                           <button onClick={() => pauseAd(ad.fb_ad_id)} disabled={acting === ad.fb_ad_id} style={{ padding: "2px 6px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer", opacity: acting === ad.fb_ad_id ? 0.4 : 1 }}>⏸</button>
                         </div>
@@ -526,7 +528,48 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
           )}
         </>
       )}
+      {previewAd && <AdPreviewModal adId={previewAd} onClose={() => setPreviewAd(null)} />}
     </section>
+  );
+}
+
+// ─── AD PREVIEW MODAL (Meta Graph API) ───
+function AdPreviewModal({ adId, onClose }: { adId: string; onClose: () => void }) {
+  const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    fetch(`/api/agent/meta/ad-preview?fb_ad_id=${adId}`, { credentials: "include" })
+      .then(async r => r.ok ? r.json() : Promise.reject((await r.json()).message)).then(setD).catch(e => setErr(String(e)));
+  }, [adId]);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 22, maxWidth: 720, width: "100%", maxHeight: "90vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 17, color: PURPLE }}>👁 Preview del anuncio</h2>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", fontSize: 18, cursor: "pointer", color: "#94a3b8" }}>×</button>
+        </div>
+        {err && <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 8, fontSize: 12.5 }}>⚠️ {err}</div>}
+        {!d && !err && <div style={{ padding: 24, textAlign: "center", color: "#888" }}>Cargando…</div>}
+        {d && (
+          <>
+            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#666" }}>{d.ad_name}</p>
+            {d.creative?.video_url ? <video src={d.creative.video_url} poster={d.creative.video_thumbnail} controls style={{ width: "100%", borderRadius: 10, background: "#000", maxHeight: 500 }} /> : d.creative?.image_url ? <img src={d.creative.image_url} alt={d.ad_name} style={{ width: "100%", borderRadius: 10 }} /> : d.creative?.thumbnail ? <img src={d.creative.thumbnail} alt={d.ad_name} style={{ width: "100%", borderRadius: 10, maxWidth: 400 }} /> : null}
+            {(d.creative?.title || d.creative?.body) && (
+              <div style={{ marginTop: 12, padding: 12, background: "rgba(0,0,0,0.03)", borderRadius: 8 }}>
+                {d.creative.title && <strong style={{ display: "block", fontSize: 13, color: "#1a1a2e", marginBottom: 4 }}>{d.creative.title}</strong>}
+                {d.creative.body && <p style={{ margin: 0, fontSize: 12.5, color: "#475569", whiteSpace: "pre-line" }}>{d.creative.body}</p>}
+              </div>
+            )}
+            {d.preview_html && (
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 11.5, color: PURPLE, fontWeight: 700 }}>📱 Ver preview oficial Meta</summary>
+                <div style={{ marginTop: 8, padding: 10, background: "#000", borderRadius: 8, overflow: "auto" }} dangerouslySetInnerHTML={{ __html: d.preview_html }} />
+              </details>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
