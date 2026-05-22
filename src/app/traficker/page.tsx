@@ -672,6 +672,22 @@ function DailyBrief({ accountId }: { accountId: string }) {
   const [d, setD] = useState<DailyBriefData | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
+  // Persistencia local de items finalizados del brief de HOY (se resetea cada día porque la key incluye la fecha)
+  const todayKey = `brief-done-traficker-${new Date().toISOString().slice(0, 10)}`;
+  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { const raw = localStorage.getItem(todayKey); if (raw) setDoneIds(new Set(JSON.parse(raw))); } catch {}
+  }, [todayKey]);
+  function toggleDone(id: string) {
+    setDoneIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem(todayKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
+
   useEffect(() => {
     const url = accountId ? `/api/agent/meta/daily-brief?account_id=${accountId}` : "/api/agent/meta/daily-brief";
     fetch(url, { credentials: "include" }).then(r => r.ok ? r.json() : null).then(setD);
@@ -726,14 +742,17 @@ function DailyBrief({ accountId }: { accountId: string }) {
           {d.actions.map((a, i) => {
             const priColor = a.priority === "alta" ? "#F87171" : a.priority === "media" ? "#FBBF24" : "#94a3b8";
             const sugBg = a.suggested === "escalar" ? "#10B981" : a.suggested === "pausar" ? "#DC2626" : a.suggested === "refrescar" ? "#0891B2" : "#6B7280";
+            const itemId = `${a.ad_id ?? a.title}-${i}`;
+            const isDone = doneIds.has(itemId);
             return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, background: "rgba(255,255,255,0.04)", borderRadius: 8, borderLeft: `3px solid ${priColor}` }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, background: "rgba(255,255,255,0.04)", borderRadius: 8, borderLeft: `3px solid ${priColor}`, opacity: isDone ? 0.45 : 1, transition: "opacity 0.2s" }}>
+                <input type="checkbox" checked={isDone} onChange={() => toggleDone(itemId)} title={isDone ? "Marcar como pendiente" : "Marcar como finalizado"} style={{ width: 17, height: 17, accentColor: "#10B981", cursor: "pointer", flexShrink: 0 }} />
                 <span style={{ fontSize: 18 }}>{a.emoji}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ fontSize: 12.5, color: "#fff" }}>{a.title}</strong>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{a.detail}</div>
+                  <strong style={{ fontSize: 12.5, color: "#fff", textDecoration: isDone ? "line-through" : "none" }}>{a.title}</strong>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 2, textDecoration: isDone ? "line-through" : "none" }}>{a.detail}</div>
                 </div>
-                {a.suggested && a.ad_id && (
+                {a.suggested && a.ad_id && !isDone && (
                   <button onClick={() => applyAction(a.ad_id!, a.suggested === "escalar" || a.suggested === "refrescar" ? "resume" : "pause")} disabled={acting === a.ad_id} style={{ padding: "5px 11px", fontSize: 11, fontWeight: 800, color: "#fff", background: sugBg, border: "none", borderRadius: 6, cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.5, opacity: acting === a.ad_id ? 0.5 : 1 }}>
                     {a.suggested === "pausar" ? "⏸ Pausar" : a.suggested === "escalar" ? "🚀 Escalar" : a.suggested === "refrescar" ? "🔄 Refresh" : "Revisar"}
                   </button>
