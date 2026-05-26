@@ -35,10 +35,12 @@ export async function PATCH(req: NextRequest) {
   if (me.isTraficker && (t.assignee_type !== "traficker" || t.assignee_ref !== me.email)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const patch: any = { updated_at: new Date().toISOString() };
   const completionMessage = typeof body.completion_message === "string" ? body.completion_message.trim().slice(0, 1000) : "";
-  if (body.status === "done") {
-    patch.status = "done";
-    patch.completed_at = new Date().toISOString();
-    if (completionMessage) patch.completion_message = completionMessage;
+  if (body.status && ["open", "in_progress", "done", "cancelled"].includes(body.status)) {
+    patch.status = body.status;
+    if (body.status === "done") {
+      patch.completed_at = new Date().toISOString();
+      if (completionMessage) patch.completion_message = completionMessage;
+    }
   }
   const { data } = await sb.from("panel_tasks").update(patch).eq("id", body.id).select("*").single();
   if (body.status === "done") {

@@ -302,7 +302,14 @@ export default function TrafickerDashboard() {
               </div>
             </section>
           )}
-          {tab === "tareas" && <MyTasks api="/api/traficker/tasks" />}
+          {tab === "tareas" && (
+            <>
+              <div style={{ marginBottom: 12 }}>
+                <a href="/traficker/board" style={{ display: "inline-block", padding: "8px 14px", background: "linear-gradient(135deg, #6A178C, #8B2FB5)", color: "#fff", textDecoration: "none", borderRadius: 8, fontSize: 12, fontWeight: 800 }}>📋 Abrir mi Kanban →</a>
+              </div>
+              <MyTasks api="/api/traficker/tasks" />
+            </>
+          )}
         </>
       )}
 
