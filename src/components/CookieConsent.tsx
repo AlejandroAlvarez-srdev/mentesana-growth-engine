@@ -21,22 +21,22 @@ export default function CookieConsent() {
   useEffect(() => {
     const existing = readConsent();
     if (!existing) {
-      setVisible(true);
-    } else {
-      setAnalytics(existing.categories.analytics);
-      setMarketing(existing.categories.marketing);
+      // Delay para que el hero pinte primero (LCP < 2s en mobile Meta cold).
+      // AEPD lo permite mientras no carguemos scripts no-esenciales antes del consentimiento.
+      const t = setTimeout(() => setVisible(true), 1200);
+      const onOpen = () => { setShowPanel(true); setVisible(true); };
+      window.addEventListener(OPEN_PREFS_EVENT, onOpen);
+      return () => { clearTimeout(t); window.removeEventListener(OPEN_PREFS_EVENT, onOpen); };
     }
+    setAnalytics(existing.categories.analytics);
+    setMarketing(existing.categories.marketing);
     const onOpen = () => {
       const c = readConsent();
-      if (c) {
-        setAnalytics(c.categories.analytics);
-        setMarketing(c.categories.marketing);
-      }
+      if (c) { setAnalytics(c.categories.analytics); setMarketing(c.categories.marketing); }
       setShowPanel(true);
       setVisible(true);
     };
     window.addEventListener(OPEN_PREFS_EVENT, onOpen);
-    window.addEventListener(CONSENT_EVENT, () => {});
     return () => window.removeEventListener(OPEN_PREFS_EVENT, onOpen);
   }, []);
 
@@ -63,40 +63,36 @@ export default function CookieConsent() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="cookie-consent-title"
-      className="fixed inset-x-0 bottom-0 z-[9999] p-3 sm:p-4"
+      className="fixed inset-x-0 bottom-0 z-[9999] p-2 sm:p-4"
     >
       <div className="mx-auto max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-black/10 overflow-hidden">
         {!showPanel ? (
-          <div className="p-5 sm:p-6">
-            <h2 id="cookie-consent-title" className="text-base sm:text-lg font-semibold text-gray-900">
+          <div className="p-3.5 sm:p-6">
+            <h2 id="cookie-consent-title" className="text-sm sm:text-lg font-semibold text-gray-900">
               Tu privacidad importa
             </h2>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              Usamos cookies propias y de terceros para mantener el sitio operativo, medir el uso de forma anónima y, si lo
-              autorizas, mostrarte publicidad personalizada. Puedes aceptar todas, rechazarlas o elegir por categoría. Más
-              información en nuestra{" "}
-              <Link href="/legal/cookies" className="underline text-[#6A178C]">política de cookies</Link>{" "}
-              y{" "}
-              <Link href="/legal/privacidad" className="underline text-[#6A178C]">política de privacidad</Link>.
+            <p className="mt-1 sm:mt-2 text-[11px] sm:text-sm text-gray-600 leading-snug sm:leading-relaxed line-clamp-2 sm:line-clamp-none">
+              Usamos cookies propias y de terceros para medir uso y, si lo autorizas, personalizar anuncios.{" "}
+              <Link href="/legal/cookies" className="underline text-[#6A178C]">Más info</Link>.
             </p>
-            <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <div className="mt-2.5 sm:mt-4 flex flex-row gap-2">
               <button
                 onClick={acceptAll}
-                className="flex-1 rounded-full bg-[#6A178C] text-white text-sm font-semibold py-2.5 px-4 hover:bg-[#581174] transition-colors"
+                className="flex-[2] rounded-full bg-[#6A178C] text-white text-xs sm:text-sm font-semibold py-2 sm:py-2.5 px-3 sm:px-4 hover:bg-[#581174] transition-colors"
               >
                 Aceptar todas
               </button>
               <button
                 onClick={rejectAll}
-                className="flex-1 rounded-full bg-gray-100 text-gray-900 text-sm font-semibold py-2.5 px-4 hover:bg-gray-200 transition-colors"
+                className="flex-1 rounded-full bg-gray-100 text-gray-900 text-xs sm:text-sm font-semibold py-2 sm:py-2.5 px-3 sm:px-4 hover:bg-gray-200 transition-colors"
               >
-                Rechazar todas
+                Rechazar
               </button>
               <button
                 onClick={() => setShowPanel(true)}
-                className="flex-1 rounded-full bg-white text-[#6A178C] text-sm font-semibold py-2.5 px-4 ring-1 ring-[#6A178C]/30 hover:bg-[#6A178C]/5 transition-colors"
+                className="flex-1 rounded-full bg-white text-[#6A178C] text-xs sm:text-sm font-semibold py-2 sm:py-2.5 px-3 sm:px-4 ring-1 ring-[#6A178C]/30 hover:bg-[#6A178C]/5 transition-colors"
               >
-                Configurar
+                Personalizar
               </button>
             </div>
           </div>
