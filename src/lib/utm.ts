@@ -55,6 +55,13 @@ export function captureUtms(): void {
     // No sobrescribir nunca para preservar atribución original de la pauta.
     if (!localStorage.getItem(FIRST_TOUCH_KEY)) {
       localStorage.setItem(FIRST_TOUCH_KEY, JSON.stringify({ ...data, captured_at: new Date().toISOString() }));
+      // Compat: algunas landings/checkouts antiguos leen claves separadas
+      // ms_first_utm_source, ms_first_utm_medium, ... Las escribimos en
+      // paralelo para no romper a esos consumidores.
+      KEYS.forEach((k) => {
+        const v = data[k];
+        if (v) try { localStorage.setItem(`ms_first_${k}`, v); } catch {}
+      });
     }
   } catch {}
 }
