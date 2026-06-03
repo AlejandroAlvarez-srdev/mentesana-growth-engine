@@ -120,6 +120,39 @@ function sendMetaCAPI(event: string, props: EventProps, eventId: string): void {
   } catch {}
 }
 
+// TikTok Events API (server-side) — fires alongside the pixel for dedup via event_id.
+function sendTiktokCAPI(event: string, props: EventProps, eventId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const cookies = document.cookie.split(";").reduce((acc, c) => {
+      const [k, v] = c.trim().split("=");
+      if (k && v) acc[k] = v;
+      return acc;
+    }, {} as Record<string, string>);
+    const url = new URL(window.location.href);
+    const ttclid = url.searchParams.get("ttclid") || cookies.ttclid || undefined;
+    const storedEmail = localStorage.getItem("ms_user_email") || undefined;
+    const storedPhone = localStorage.getItem("ms_user_phone") || undefined;
+    const payload = {
+      event,
+      event_id: eventId,
+      props,
+      page_url: window.location.href,
+      page_path: window.location.pathname,
+      visitor_id: getVisitorId(),
+      ttclid,
+      user_data: {
+        email: storedEmail,
+        phone: storedPhone,
+        ttp: cookies._ttp || undefined,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    if (navigator.sendBeacon) navigator.sendBeacon("/api/tiktok-events", blob);
+    else fetch("/api/tiktok-events", { method: "POST", body: blob, keepalive: true }).catch(() => {});
+  } catch {}
+}
+
 // Map our internal event names to standard Meta/TikTok event names
 // where applicable. Custom events use the original name.
 const META_STANDARD: Record<string, string> = {
@@ -170,7 +203,7 @@ const TIKTOK_STANDARD: Record<string, string> = {
 
 interface FbqWindow extends Window {
   fbq?: (...args: unknown[]) => void;
-  ttq?: { track: (event: string, props?: unknown) => void; page?: () => void };
+  ttq?: { track: (event: string, props?: unknown, opts?: { event_id?: string }) => void; page?: () => void };
   clarity?: (...args: unknown[]) => void;
 }
 
@@ -186,6 +219,9 @@ export function track(event: string, props: EventProps = {}): void {
 
   // 0b. Meta Conversion API (server-side) — marketing, requiere consentimiento
   if (hasConsent("marketing")) sendMetaCAPI(event, props, eventId);
+
+  // 0c. TikTok Events API (server-side) — mismo eventId que el pixel para dedup
+  if (hasConsent("marketing")) sendTiktokCAPI(event, props, eventId);
 
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
@@ -206,7 +242,7 @@ export function track(event: string, props: EventProps = {}): void {
   try {
     if (w.ttq) {
       const standard = TIKTOK_STANDARD[event];
-      w.ttq.track(standard || event, props);
+      w.ttq.track(standard || event, props, { event_id: eventId });
     }
   } catch {}
 
