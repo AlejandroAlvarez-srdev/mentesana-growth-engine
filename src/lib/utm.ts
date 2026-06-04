@@ -10,12 +10,18 @@ export interface UtmParams {
   utm_term?: string;
   referrer?: string;
   landing_page?: string;
+  // Click IDs por plataforma — perduran aunque el ad strippe los UTMs
+  gclid?: string;       // Google Ads (PMax, Search)
+  fbclid?: string;      // Meta Ads
+  ttclid?: string;      // TikTok Ads
+  msclkid?: string;     // Microsoft / Bing
   // First-touch (sobrevive entre sesiones, se setea la primera vez que el usuario aterriza)
   first_utm_source?: string;
   first_utm_medium?: string;
   first_utm_campaign?: string;
   first_utm_content?: string;
   first_touch_at?: string;
+  first_gclid?: string;
   // Extras del contexto del pago (p.ej. slot seleccionado en diagnostico)
   scheduled_date?: string;
   scheduled_time?: string;
@@ -23,6 +29,7 @@ export interface UtmParams {
 }
 
 const KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+const CLICK_IDS = ["gclid", "fbclid", "ttclid", "msclkid"] as const;
 const STORAGE_KEY = "ms_utm"; // sessionStorage — last-touch (sesión actual)
 const FIRST_TOUCH_KEY = "ms_utm_first"; // localStorage — first-touch, persiste entre sesiones
 
@@ -38,12 +45,18 @@ export function captureUtms(): void {
     landing_page: url.pathname + url.search,
     referrer: document.referrer || "direct",
   };
+  // Captura click IDs SIEMPRE si aparecen en la URL (independiente de UTMs).
+  CLICK_IDS.forEach((k) => {
+    const v = url.searchParams.get(k);
+    if (v) data[k] = v.slice(0, 200);
+  });
+
   if (hasAny) {
     KEYS.forEach((k) => {
       const v = url.searchParams.get(k);
       if (v) data[k] = v.slice(0, 120);
     });
-  } else if (!sessionStorage.getItem(STORAGE_KEY)) {
+  } else if (!sessionStorage.getItem(STORAGE_KEY) && CLICK_IDS.every((k) => !url.searchParams.has(k))) {
     // Orgánico / directo primera visita — usamos el referrer como best-effort
     data.utm_source = data.referrer && data.referrer !== "direct" ? new URL(data.referrer).hostname : "direct";
     data.utm_medium = "organic";
@@ -63,6 +76,14 @@ export function captureUtms(): void {
         if (v) try { localStorage.setItem(`ms_first_${k}`, v); } catch {}
       });
     }
+    // Click IDs van a su propia key persistente para que duren más que la sesión
+    // (Google Ads attribution window: 30-90 días). Solo guardamos la primera vez.
+    CLICK_IDS.forEach((k) => {
+      const v = data[k];
+      if (v && !localStorage.getItem(`ms_first_${k}`)) {
+        try { localStorage.setItem(`ms_first_${k}`, v); } catch {}
+      }
+    });
   } catch {}
 }
 
@@ -82,13 +103,24 @@ export function getUtms(): UtmParams {
     const first = rawFirst ? JSON.parse(rawFirst) : null;
     if (!first) return last;
     // Expone first-touch como fields "first_*" para que el webhook pueda guardarlos
+    // Click IDs: si last no los tiene pero localStorage SÍ (capturados antes),
+    // los recuperamos para mandarlos a Stripe.
+    const persistedGclid = last.gclid || localStorage.getItem("ms_first_gclid") || undefined;
+    const persistedFbclid = last.fbclid || localStorage.getItem("ms_first_fbclid") || undefined;
+    const persistedTtclid = last.ttclid || localStorage.getItem("ms_first_ttclid") || undefined;
+    const persistedMsclkid = last.msclkid || localStorage.getItem("ms_first_msclkid") || undefined;
     return {
       ...last,
+      ...(persistedGclid ? { gclid: persistedGclid } : {}),
+      ...(persistedFbclid ? { fbclid: persistedFbclid } : {}),
+      ...(persistedTtclid ? { ttclid: persistedTtclid } : {}),
+      ...(persistedMsclkid ? { msclkid: persistedMsclkid } : {}),
       ...(first.utm_source ? { first_utm_source: first.utm_source } : {}),
       ...(first.utm_medium ? { first_utm_medium: first.utm_medium } : {}),
       ...(first.utm_campaign ? { first_utm_campaign: first.utm_campaign } : {}),
       ...(first.utm_content ? { first_utm_content: first.utm_content } : {}),
       ...(first.captured_at ? { first_touch_at: first.captured_at } : {}),
+      ...(first.gclid ? { first_gclid: first.gclid } : {}),
     } as UtmParams;
   } catch {
     return {};
