@@ -207,9 +207,19 @@ interface FbqWindow extends Window {
   clarity?: (...args: unknown[]) => void;
 }
 
+// Lee la variante del A/B test diag-vs-test de la cookie (la fija proxy.ts) para
+// colgarla en todos los eventos → la conversión queda segmentada por variante.
+function abDiagVariant(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const m = document.cookie.match(/(?:^|;\s*)ms_ab_diag=([AB])/);
+  return m?.[1];
+}
+
 export function track(event: string, props: EventProps = {}): void {
   if (typeof window === "undefined") return;
   const w = window as FbqWindow;
+  const ab = abDiagVariant();
+  if (ab) props = { ...props, ab_diag: ab };
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
   const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;

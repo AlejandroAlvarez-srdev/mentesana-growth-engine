@@ -20,6 +20,24 @@ export function proxy(request: NextRequest) {
   // social-proof para paid, hay que apuntar las ads directamente a /por-que-diagnostico-social-proof
   // en Meta (no vía proxy).
 
+  // ── A/B TEST: /diagnostico (control) vs /test-diagnostico (funnel directo) ──
+  // Split 50/50 sticky por cookie. Variante B se sirve por REWRITE (no redirect)
+  // para no perder fbclid/_fbc → el pixel sigue atribuyendo igual. La variante se
+  // cuelga en cada evento via la cookie ms_ab_diag (ver src/lib/tracking.ts), así
+  // que la conversión (purchase) queda segmentada por variante.
+  if (url.pathname === "/diagnostico") {
+    const prev = request.cookies.get("ms_ab_diag")?.value;
+    const variant = prev === "A" || prev === "B" ? prev : (Math.random() < 0.5 ? "A" : "B");
+    const res = variant === "B"
+      ? NextResponse.rewrite(new URL("/test-diagnostico" + url.search, url))
+      : NextResponse.next();
+    if (variant !== prev) {
+      res.cookies.set("ms_ab_diag", variant, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
+    }
+    res.headers.set("x-ab-diag", variant);
+    return res;
+  }
+
   return NextResponse.next();
 }
 
