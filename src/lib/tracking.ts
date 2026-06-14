@@ -223,6 +223,15 @@ function abWarmingVariant(): string | undefined {
   return m?.[1];
 }
 
+// Variante del 3er A/B test (challenger de la landing /por-que-diagnostico) — la fija
+// proxy.ts en la cookie ms_ab_landing. Persiste landing→test→checkout, así la conversión
+// a pago queda segmentada por variante (también se estampa en metadata de Stripe).
+function abLandingVariant(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const m = document.cookie.match(/(?:^|;\s*)ms_ab_landing=([AB])/);
+  return m?.[1];
+}
+
 export function track(event: string, props: EventProps = {}): void {
   if (typeof window === "undefined") return;
   const w = window as FbqWindow;
@@ -230,6 +239,8 @@ export function track(event: string, props: EventProps = {}): void {
   if (ab) props = { ...props, ab_diag: ab };
   const abW = abWarmingVariant();
   if (abW) props = { ...props, ab_warming: abW };
+  const abL = abLandingVariant();
+  if (abL) props = { ...props, ab_landing: abL };
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
   const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;

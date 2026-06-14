@@ -51,6 +51,32 @@ export function proxy(request: NextRequest) {
     return res;
   }
 
+  // ── A/B TEST #3: landing /por-que-diagnostico — challenger (B) vs control (A) ──
+  // Reparto 50/50 sticky por cookie ms_ab_landing; page.tsx lee la cookie en SSR y
+  // renderiza A o B → sin flash/CLS. Los BOTS (sin cookie) caen siempre en A (el
+  // contenido indexado): A/B testing conforme a Google, no cloaking. tracking.ts la
+  // cuelga como ab_landing en cada evento; /api/create-checkout la estampa en Stripe
+  // → conversión a pago medible por variante. Override QA con ?landing=A|B.
+  if (url.pathname === "/por-que-diagnostico") {
+    const override = url.searchParams.get("landing");
+    const prev = request.cookies.get("ms_ab_landing")?.value;
+    const variant: "A" | "B" =
+      override === "A" || override === "B" ? override
+      : prev === "A" || prev === "B" ? prev
+      : Math.random() < 0.5 ? "A" : "B";
+    // Pasamos la variante por header de REQUEST para que page.tsx la lea en SSR ya en
+    // la primera visita (la cookie aún no viaja en esa primera request). Así el HTML
+    // inicial ya es el correcto: sin flash, sin CLS.
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-ab-landing", variant);
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    if (variant !== prev) {
+      res.cookies.set("ms_ab_landing", variant, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
+    }
+    res.headers.set("x-ab-landing", variant);
+    return res;
+  }
+
   return NextResponse.next();
 }
 
