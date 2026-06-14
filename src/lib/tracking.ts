@@ -215,11 +215,21 @@ function abDiagVariant(): string | undefined {
   return m?.[1];
 }
 
+// Variante del 2º A/B test (capa de calentamiento del match) — la fija proxy.ts en
+// la cookie ms_ab_warming. Se cuelga en cada evento para segmentar la conversión.
+function abWarmingVariant(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const m = document.cookie.match(/(?:^|;\s*)ms_ab_warming=([AB])/);
+  return m?.[1];
+}
+
 export function track(event: string, props: EventProps = {}): void {
   if (typeof window === "undefined") return;
   const w = window as FbqWindow;
   const ab = abDiagVariant();
   if (ab) props = { ...props, ab_diag: ab };
+  const abW = abWarmingVariant();
+  if (abW) props = { ...props, ab_warming: abW };
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
   const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
