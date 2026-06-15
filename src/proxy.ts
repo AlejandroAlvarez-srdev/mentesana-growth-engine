@@ -37,7 +37,7 @@ export function proxy(request: NextRequest) {
     res.headers.set("x-ab-diag", variant);
     // Cuando servimos el funnel directo (variante B de este test) asignamos también
     // la variante del 2º test: "calentamiento" del match (B) vs match clásico (A).
-    if (variant === "B") applyWarming(res, request, resolveWarming(request, url));
+    if (variant === "B") applyWarming(res, request, resolveWarming(url));
     return res;
   }
 
@@ -47,7 +47,7 @@ export function proxy(request: NextRequest) {
   // de QA con ?warming=A|B (también fija la cookie para que la sesión sea coherente).
   if (url.pathname === "/test-diagnostico") {
     const res = NextResponse.next();
-    applyWarming(res, request, resolveWarming(request, url));
+    applyWarming(res, request, resolveWarming(url));
     return res;
   }
 
@@ -60,10 +60,10 @@ export function proxy(request: NextRequest) {
   if (url.pathname === "/por-que-diagnostico") {
     const override = url.searchParams.get("landing");
     const prev = request.cookies.get("ms_ab_landing")?.value;
-    const variant: "A" | "B" =
-      override === "A" || override === "B" ? override
-      : prev === "A" || prev === "B" ? prev
-      : Math.random() < 0.5 ? "A" : "B";
+    // GANADOR: B se lleva el 100% del tráfico (test cerrado). Solo el override de QA
+    // ?landing=A permite ver el antiguo control. Se sigue poniendo cookie/header en B
+    // para que tracking cuelgue ab_landing=B y la atribución a pago quede coherente.
+    const variant: "A" | "B" = override === "A" || override === "B" ? override : "B";
     // Pasamos la variante por header de REQUEST para que page.tsx la lea en SSR ya en
     // la primera visita (la cookie aún no viaja en esa primera request). Así el HTML
     // inicial ya es el correcto: sin flash, sin CLS.
@@ -80,14 +80,13 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Resuelve la variante del test de calentamiento: 1) override ?warming=A|B,
-// 2) cookie previa sticky, 3) sorteo 50/50.
-function resolveWarming(request: NextRequest, url: URL): "A" | "B" {
+// GANADOR: el calentamiento (B) se lleva el 100% del tráfico (test cerrado). Solo el
+// override de QA ?warming=A permite ver el match clásico. Se sigue fijando la cookie en
+// B para que tracking cuelgue ab_warming=B y la atribución quede coherente.
+function resolveWarming(url: URL): "A" | "B" {
   const override = url.searchParams.get("warming");
   if (override === "A" || override === "B") return override;
-  const prev = request.cookies.get("ms_ab_warming")?.value;
-  if (prev === "A" || prev === "B") return prev;
-  return Math.random() < 0.5 ? "A" : "B";
+  return "B";
 }
 
 // Fija la cookie (si cambió) y el header de debug para la variante de calentamiento.
