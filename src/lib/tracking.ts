@@ -11,6 +11,7 @@
 import { track as vercelTrack } from "@vercel/analytics";
 import { hasConsent } from "@/lib/cookie-consent";
 import { getUtms } from "@/lib/utm";
+import { META_STANDARD } from "@/lib/meta-events";
 
 type EventProps = Record<string, string | number | boolean>;
 
@@ -165,31 +166,8 @@ function sendTiktokCAPI(event: string, props: EventProps, eventId: string): void
   } catch {}
 }
 
-// Map our internal event names to standard Meta/TikTok event names
-// where applicable. Custom events use the original name.
-const META_STANDARD: Record<string, string> = {
-  test_started: "InitiateCheckout",
-  test_completed: "CompleteRegistration",
-  match_viewed: "ViewContent",
-  payment_started: "InitiateCheckout",
-  payment_completed: "Purchase",
-  contact_submitted: "Contact",
-  newsletter_subscribed: "Subscribe",
-  cta_click_buy: "AddToCart",
-  // Diagnostic funnel
-  view_landing_diagnostico: "ViewContent",
-  click_cta_empezar: "AddToCart",
-  start_matching: "InitiateCheckout",
-  view_match_result: "ViewContent",
-  select_slot: "Schedule",
-  initiate_checkout: "InitiateCheckout",
-  purchase: "Purchase",
-  upsell_bono_purchased: "Purchase",
-  // Campaña Eva (influencer → diagnóstico)
-  view_landing_eva: "ViewContent",
-  click_cta_eva: "AddToCart",
-};
-
+// META_STANDARD vive en @/lib/meta-events (mapa compartido con el servidor /api/meta-capi
+// para que la deduplicación de Meta funcione). TikTok mantiene su propio mapa abajo.
 const TIKTOK_STANDARD: Record<string, string> = {
   test_started: "ClickButton",
   test_completed: "CompleteRegistration",

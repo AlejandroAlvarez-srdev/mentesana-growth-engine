@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
+// Mapa de eventos COMPARTIDO con el cliente (src/lib/tracking.ts) para que el pixel y
+// el CAPI manden el MISMO event_name → la deduplicación de Meta funciona. Antes este
+// mapa estaba recortado (faltaban start_matching, initiate_checkout, select_slot…) y
+// rompía la dedup de los eventos de embudo.
+import { META_STANDARD } from "@/lib/meta-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,19 +16,6 @@ const API_VERSION = "v21.0";
 function sha256(value: string): string {
   return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
 }
-
-// Map internal event names to Meta standard events (same as client-side)
-const META_STANDARD: Record<string, string> = {
-  test_started: "InitiateCheckout",
-  test_completed: "CompleteRegistration",
-  match_viewed: "ViewContent",
-  payment_started: "InitiateCheckout",
-  payment_completed: "Purchase",
-  contact_submitted: "Contact",
-  newsletter_subscribed: "Subscribe",
-  cta_click_buy: "AddToCart",
-  page_view: "PageView",
-};
 
 // POST { event, props, page_url, user_data }
 // Sends server-side event to Meta Conversion API for deduplication + better attribution.
