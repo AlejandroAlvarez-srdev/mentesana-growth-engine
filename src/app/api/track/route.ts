@@ -9,6 +9,9 @@ interface TrackEvent {
   page_url?: string;
   page_path?: string;
   referrer?: string;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -31,14 +34,19 @@ export async function POST(req: NextRequest) {
 
     const rows = events.map((e) => {
       const url = e.page_url || "";
-      // Parse UTM params
-      let utm_source: string | null = null, utm_medium: string | null = null, utm_campaign: string | null = null;
-      try {
-        const u = new URL(url);
-        utm_source = u.searchParams.get("utm_source");
-        utm_medium = u.searchParams.get("utm_medium");
-        utm_campaign = u.searchParams.get("utm_campaign");
-      } catch {}
+      // Preferimos las UTMs PERSISTIDAS que el cliente adjunta en el payload (sobreviven
+      // a la navegación SPA y a los redirects). Solo si no vienen, parseamos el page_url.
+      let utm_source: string | null = e.utm_source || null;
+      let utm_medium: string | null = e.utm_medium || null;
+      let utm_campaign: string | null = e.utm_campaign || null;
+      if (!utm_source || !utm_medium || !utm_campaign) {
+        try {
+          const u = new URL(url);
+          utm_source = utm_source || u.searchParams.get("utm_source");
+          utm_medium = utm_medium || u.searchParams.get("utm_medium");
+          utm_campaign = utm_campaign || u.searchParams.get("utm_campaign");
+        } catch {}
+      }
 
       return {
         event_name: e.event,

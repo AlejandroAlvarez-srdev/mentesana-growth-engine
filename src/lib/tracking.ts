@@ -10,6 +10,7 @@
 
 import { track as vercelTrack } from "@vercel/analytics";
 import { hasConsent } from "@/lib/cookie-consent";
+import { getUtms } from "@/lib/utm";
 
 type EventProps = Record<string, string | number | boolean>;
 
@@ -42,6 +43,11 @@ function getSessionId(): string {
 function sendInternal(event: string, props: EventProps): void {
   if (typeof window === "undefined") return;
   try {
+    // Adjuntamos las UTMs PERSISTIDAS (sessionStorage/localStorage, capturadas al
+    // aterrizar por UtmTracker). Antes el endpoint las sacaba del page_url, que pierde
+    // el ?utm tras la navegación SPA/redirect → todos los eventos del embudo salían
+    // como "directo". Ahora cada evento lleva la atribución de la sesión.
+    const utms = getUtms();
     const payload = {
       event,
       props,
@@ -50,6 +56,9 @@ function sendInternal(event: string, props: EventProps): void {
       page_url: window.location.href,
       page_path: window.location.pathname,
       referrer: document.referrer || null,
+      utm_source: utms.utm_source || null,
+      utm_medium: utms.utm_medium || null,
+      utm_campaign: utms.utm_campaign || null,
     };
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     if (navigator.sendBeacon) {
@@ -73,9 +82,12 @@ function sendMetaCAPI(event: string, props: EventProps, eventId: string): void {
     }, {} as Record<string, string>);
 
     // Collect maximum user data for Meta matching quality
-    const utmSource = sessionStorage.getItem("utm_source") || undefined;
-    const utmMedium = sessionStorage.getItem("utm_medium") || undefined;
-    const utmCampaign = sessionStorage.getItem("utm_campaign") || undefined;
+    // Las UTMs viven en el blob `ms_utm` (getUtms), NO en keys sueltas. Antes se leían
+    // de sessionStorage.getItem("utm_source") (key inexistente) → CAPI sin atribución.
+    const capiUtms = getUtms();
+    const utmSource = capiUtms.utm_source || undefined;
+    const utmMedium = capiUtms.utm_medium || undefined;
+    const utmCampaign = capiUtms.utm_campaign || undefined;
     // Grab any user info stored from checkout/forms
     const storedEmail = localStorage.getItem("ms_user_email") || undefined;
     const storedPhone = localStorage.getItem("ms_user_phone") || undefined;
