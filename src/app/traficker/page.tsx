@@ -9,6 +9,7 @@ import AdPreviewModalNew, { type AdPreviewData } from "./_components/AdPreviewMo
 import DateRangePicker, { type DateRange, presetToRange } from "./_components/DateRangePicker";
 import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_components/MonthlyEvolutionChart";
 import BitacoraTab from "./_components/BitacoraTab";
+import AssignTaskModal from "./_components/AssignTaskModal";
 
 const PURPLE = "#6A178C";
 
@@ -35,6 +36,7 @@ export default function TrafickerDashboard() {
   const [compareMode, setCompareMode] = useState(false);
   const [evolutionData, setEvolutionData] = useState<MonthPoint[]>([]);
   const [evolutionMetric, setEvolutionMetric] = useState<Metric>("spend");
+  const [showAssignTask, setShowAssignTask] = useState(false);
 
   async function diagnose(accId: string) {
     const r = await fetch("/api/agent/meta/diagnose-account", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId }) });
@@ -156,6 +158,7 @@ export default function TrafickerDashboard() {
               {selectedAcc && <LiveBadge lastSyncedAt={accounts.find(x => x.id === selectedAcc)?.last_synced_at ?? null} />}
               <div style={{ flex: 1 }} />
               <a href="/agent/meta-auditor" style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${PURPLE}33`, background: "#fff", color: PURPLE, textDecoration: "none", fontFamily: "inherit" }}>🤖 Auditor</a>
+              <button onClick={() => setShowAssignTask(true)} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}55`, fontWeight: 800 }}>➕ Asignar tarea</button>
               <button onClick={() => setShowCreateModal(true)} style={btnPrimary}>+ Crear en Meta</button>
               <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Cuenta</button>
             </>
@@ -375,6 +378,7 @@ export default function TrafickerDashboard() {
       {showTokenModal && <TokenConnectModal onClose={() => setShowTokenModal(false)} onDone={() => { setShowTokenModal(false); loadAccounts(); }} />}
       {showCreateModal && <CreateCampaignModal accountId={selectedAcc} accounts={accounts.map(a => ({ id: a.id, fb_account_id: a.fb_account_id, name: a.name, currency: a.currency }))} onClose={() => setShowCreateModal(false)} />}
       <AdPreviewModalNew open={!!previewAdData} ad={previewAdData} onClose={() => setPreviewAdData(null)} />
+      {showAssignTask && <AssignTaskModal onClose={() => setShowAssignTask(false)} onAssigned={() => alert("✓ Tarea asignada — el destinatario recibirá email + notificación en su panel")} />}
       {/* Unused — DateRangePicker disponible para filtros futuros */}
       {false && <DateRangePicker value={dateRange} onChange={setDateRange} compare={compareMode} onCompareChange={setCompareMode} />}
 
