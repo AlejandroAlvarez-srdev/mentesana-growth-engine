@@ -233,7 +233,7 @@ export default function TrafickerDashboard() {
                     <Kpi label="👆 Thumbstop" value={dashboard.totals.thumbstop_rate ? `${dashboard.totals.thumbstop_rate.toFixed(1)}%` : "—"} color={dashboard.totals.thumbstop_rate >= 25 ? "#16a34a" : "#475569"} />
                     <Kpi label="⏱ AVG Watch" value={dashboard.totals.video_avg_watch_sec != null ? `${dashboard.totals.video_avg_watch_sec.toFixed(1)}s` : "—"} color="#475569" />
                     <Kpi label="▶ Vistas 3s+" value={(dashboard.totals.video_3s_views ?? 0).toLocaleString("es-ES")} color="#0891b2" />
-                    <Kpi label="📋 Ads activos" value={dashboard.totals.active_ads ?? 0} color={PURPLE} />
+                    <Kpi label="📋 Ads con gasto 30d" value={dashboard.totals.ads_with_spend ?? 0} color={PURPLE} />
                     <Kpi label="🗓 Días" value={dashboard.totals.days_covered ?? 0} color="#475569" />
                   </section>
                 </>
