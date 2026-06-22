@@ -10,6 +10,7 @@ import DateRangePicker, { type DateRange, presetToRange } from "./_components/Da
 import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_components/MonthlyEvolutionChart";
 import BitacoraTab from "./_components/BitacoraTab";
 import AssignTaskModal from "./_components/AssignTaskModal";
+import ActiveAdsStrip from "./_components/ActiveAdsStrip";
 
 const PURPLE = "#6A178C";
 
@@ -202,6 +203,7 @@ export default function TrafickerDashboard() {
           {/* ─── Resumen: KPIs + top winners + urgentes preview ─── */}
           {tab === "resumen" && (
             <>
+              <ActiveAdsStrip accountId={selectedAcc} />
               {dashboard?.totals && (
                 <>
                   {/* Bloque 1 — Inversión y resultados */}
