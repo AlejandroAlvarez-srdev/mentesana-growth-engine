@@ -203,14 +203,40 @@ export default function TrafickerDashboard() {
           {tab === "resumen" && (
             <>
               {dashboard?.totals && (
-                <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
-                  <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
-                  <Kpi label="👁 Impresiones" value={dashboard.totals.impressions.toLocaleString("es-ES")} color="#0891b2" />
-                  <Kpi label="🖱 CTR" value={`${dashboard.totals.ctr.toFixed(2)}%`} color={dashboard.totals.ctr >= 1.5 ? "#16a34a" : dashboard.totals.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
-                  <Kpi label="🎯 Resultados" value={dashboard.totals.results} color="#16a34a" />
-                  <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
-                  <Kpi label="🚀 ROAS" value={dashboard.totals.roas ? `${dashboard.totals.roas.toFixed(2)}x` : "—"} color={dashboard.totals.roas && dashboard.totals.roas >= 2 ? "#16a34a" : "#d97706"} />
-                </section>
+                <>
+                  {/* Bloque 1 — Inversión y resultados */}
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>💼 Inversión y resultados</div>
+                  <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
+                    <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
+                    <Kpi label="📅 Gasto/día" value={dashboard.totals.spend_per_day ? `${dashboard.totals.spend_per_day.toFixed(1)}€` : "—"} color={PURPLE} />
+                    <Kpi label="🎯 Resultados" value={dashboard.totals.results} color="#16a34a" />
+                    <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
+                    <Kpi label="💵 Revenue" value={`${(dashboard.totals.purchase_value ?? 0).toFixed(0)}€`} color="#0891b2" />
+                    <Kpi label="🚀 ROAS" value={dashboard.totals.roas ? `${dashboard.totals.roas.toFixed(2)}x` : "—"} color={dashboard.totals.roas && dashboard.totals.roas >= 2 ? "#16a34a" : "#d97706"} />
+                  </section>
+
+                  {/* Bloque 2 — Alcance y eficiencia */}
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>📡 Alcance y eficiencia</div>
+                  <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
+                    <Kpi label="👁 Impresiones" value={dashboard.totals.impressions.toLocaleString("es-ES")} color="#0891b2" />
+                    <Kpi label="🌍 Alcance" value={(dashboard.totals.reach ?? 0).toLocaleString("es-ES")} color="#0891b2" />
+                    <Kpi label="🔁 Frecuencia" value={dashboard.totals.frequency ? dashboard.totals.frequency.toFixed(2) : "—"} color={dashboard.totals.frequency >= 4 ? "#dc2626" : dashboard.totals.frequency >= 2.5 ? "#d97706" : "#16a34a"} />
+                    <Kpi label="💸 CPM" value={dashboard.totals.cpm ? `${dashboard.totals.cpm.toFixed(2)}€` : "—"} color="#475569" />
+                    <Kpi label="🖱 CTR" value={`${dashboard.totals.ctr.toFixed(2)}%`} color={dashboard.totals.ctr >= 1.5 ? "#16a34a" : dashboard.totals.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
+                    <Kpi label="🛒 CVR" value={dashboard.totals.cvr != null ? `${dashboard.totals.cvr.toFixed(2)}%` : "—"} color={dashboard.totals.cvr != null && dashboard.totals.cvr >= 5 ? "#16a34a" : "#475569"} />
+                  </section>
+
+                  {/* Bloque 3 — Performance del creativo */}
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>🎬 Performance del creativo</div>
+                  <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
+                    <Kpi label="🎣 Hook Rate" value={dashboard.totals.hook_rate != null ? `${dashboard.totals.hook_rate.toFixed(1)}%` : "—"} color={dashboard.totals.hook_rate != null && dashboard.totals.hook_rate >= 25 ? "#16a34a" : dashboard.totals.hook_rate != null && dashboard.totals.hook_rate < 10 ? "#dc2626" : "#d97706"} />
+                    <Kpi label="👆 Thumbstop" value={dashboard.totals.thumbstop_rate ? `${dashboard.totals.thumbstop_rate.toFixed(1)}%` : "—"} color={dashboard.totals.thumbstop_rate >= 25 ? "#16a34a" : "#475569"} />
+                    <Kpi label="⏱ AVG Watch" value={dashboard.totals.video_avg_watch_sec != null ? `${dashboard.totals.video_avg_watch_sec.toFixed(1)}s` : "—"} color="#475569" />
+                    <Kpi label="▶ Vistas 3s+" value={(dashboard.totals.video_3s_views ?? 0).toLocaleString("es-ES")} color="#0891b2" />
+                    <Kpi label="📋 Ads activos" value={dashboard.totals.active_ads ?? 0} color={PURPLE} />
+                    <Kpi label="🗓 Días" value={dashboard.totals.days_covered ?? 0} color="#475569" />
+                  </section>
+                </>
               )}
               {dashboard?.urgent_actions && dashboard.urgent_actions.length > 0 && (
                 <section style={{ marginBottom: 16, padding: 12, background: "#fff", borderRadius: 12, border: "2px solid #fee2e2" }}>
