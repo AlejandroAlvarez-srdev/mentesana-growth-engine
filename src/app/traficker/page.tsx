@@ -5,11 +5,15 @@ import MyTasks from "@/components/MyTasks";
 import NotificationBell from "@/components/NotificationBell";
 import PanelTabs, { usePanelTab } from "@/components/PanelTabs";
 import CreateCampaignModal from "./_components/CreateCampaignModal";
+import AdPreviewModalNew, { type AdPreviewData } from "./_components/AdPreviewModal";
+import DateRangePicker, { type DateRange, presetToRange } from "./_components/DateRangePicker";
+import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_components/MonthlyEvolutionChart";
+import BitacoraTab from "./_components/BitacoraTab";
 
 const PURPLE = "#6A178C";
 
 type Account = { id: string; fb_account_id: string; name: string; currency: string | null; business_name: string | null; last_synced_at: string | null };
-type AdRow = { fb_ad_id: string; ad_name: string; campaign_name: string; impressions: number; clicks: number; spend: number; ctr: number; frequency: number; thumbstop_rate: number; results: number; cost_per_result: number | null; roas: number | null; effective_status?: string };
+type AdRow = { fb_ad_id: string; ad_name: string; campaign_name: string; adset_name?: string | null; creative_thumbnail?: string | null; title?: string | null; body?: string | null; cta?: string | null; link_url?: string | null; preview_shareable_link?: string | null; impressions: number; clicks: number; spend: number; ctr: number; frequency: number; thumbstop_rate: number; hook_rate?: number | null; video_avg_watch_sec?: number | null; results: number; cost_per_result: number | null; roas: number | null; effective_status?: string };
 type Winner = AdRow & { score: number; reasons: string[] };
 type UrgentAction = { ad_id: string; ad_name: string; action: string; severity: "critical" | "warning"; reason: string };
 
@@ -26,6 +30,11 @@ export default function TrafickerDashboard() {
   const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = usePanelTab("resumen");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [previewAdData, setPreviewAdData] = useState<AdPreviewData | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange>(() => presetToRange("30d"));
+  const [compareMode, setCompareMode] = useState(false);
+  const [evolutionData, setEvolutionData] = useState<MonthPoint[]>([]);
+  const [evolutionMetric, setEvolutionMetric] = useState<Metric>("spend");
 
   async function diagnose(accId: string) {
     const r = await fetch("/api/agent/meta/diagnose-account", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: accId }) });
@@ -147,7 +156,9 @@ export default function TrafickerDashboard() {
               { key: "urgentes", label: "Urgentes", emoji: "🚨", badge: dashboard?.urgent_actions?.length },
               { key: "winners", label: "Ganadores", emoji: "🏆", badge: dashboard?.winners?.length },
               { key: "ads", label: "Todos los ads", emoji: "📋", badge: dashboard?.ads?.length },
-              { key: "drilldown", label: "Drill-down", emoji: "📈" },
+              { key: "evolucion", label: "Evolución", emoji: "📈" },
+              { key: "bitacora", label: "Bitácora", emoji: "📓" },
+              { key: "drilldown", label: "Drill-down", emoji: "🔬" },
               { key: "extras", label: "Extras", emoji: "💡" },
               { key: "brief", label: "Daily brief", emoji: "📨" },
               { key: "cuentas", label: "Cuentas", emoji: "⚙️", badge: accounts.length },
@@ -252,7 +263,7 @@ export default function TrafickerDashboard() {
                 <div style={{ background: "#fff", borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: "rgba(106,23,140,0.04)" }}>
-                      <Th>Ad</Th><Th align="center">Estado</Th><Th align="right">Spend</Th><Th align="right">CTR</Th><Th align="right">Frec</Th><Th align="right">Thumbstop</Th><Th align="right">CPA</Th><Th align="right">ROAS</Th><Th></Th>
+                      <Th>Ad</Th><Th align="center">Estado</Th><Th align="right">Spend</Th><Th align="right">CTR</Th><Th align="right">Frec</Th><Th align="right">Hook</Th><Th align="right">AVG Watch</Th><Th align="right">Thumbstop</Th><Th align="right">CPA</Th><Th align="right">ROAS</Th><Th></Th>
                     </tr></thead>
                     <tbody>
                       {dashboard.ads.slice(0, 100).map(a => {
@@ -264,10 +275,12 @@ export default function TrafickerDashboard() {
                             <Td align="right">{a.spend.toFixed(0)}€</Td>
                             <Td align="right" style={{ color: a.ctr >= 1.5 ? "#16a34a" : a.ctr < 0.7 ? "#dc2626" : "#475569" }}>{a.ctr.toFixed(2)}%</Td>
                             <Td align="right" style={{ color: a.frequency >= 4 ? "#dc2626" : "#475569" }}>{a.frequency.toFixed(2)}</Td>
+                            <Td align="right" style={{ color: a.hook_rate != null && a.hook_rate >= 25 ? "#16a34a" : a.hook_rate != null && a.hook_rate < 10 ? "#dc2626" : "#475569" }}>{a.hook_rate != null ? `${a.hook_rate.toFixed(1)}%` : "—"}</Td>
+                            <Td align="right">{a.video_avg_watch_sec != null ? `${a.video_avg_watch_sec.toFixed(1)}s` : "—"}</Td>
                             <Td align="right">{a.thumbstop_rate.toFixed(1)}%</Td>
                             <Td align="right">{a.cost_per_result ? `${a.cost_per_result.toFixed(2)}€` : "—"}</Td>
                             <Td align="right" style={{ color: a.roas && a.roas >= 2 ? "#16a34a" : "#475569" }}>{a.roas ? `${a.roas.toFixed(2)}x` : "—"}</Td>
-                            <Td>{isPaused ? <button onClick={() => actOn(a.fb_ad_id, "resume")} style={{ padding: "4px 8px", fontSize: 10, color: "#16a34a", background: "transparent", border: "1px solid rgba(16,163,74,0.3)", borderRadius: 4, cursor: "pointer" }}>▶</button> : <button onClick={() => actOn(a.fb_ad_id, "pause")} style={{ padding: "4px 8px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer" }}>⏸</button>}</Td>
+                            <Td><div style={{ display: "flex", gap: 4 }}><button onClick={() => setPreviewAdData({ fb_ad_id: a.fb_ad_id, ad_name: a.ad_name, campaign_name: a.campaign_name, adset_name: a.adset_name, creative_thumbnail: a.creative_thumbnail, title: a.title, body: a.body, cta: a.cta, link_url: a.link_url, preview_shareable_link: a.preview_shareable_link, spend: a.spend, impressions: a.impressions, ctr: a.ctr, hook_rate: a.hook_rate, video_avg_watch_sec: a.video_avg_watch_sec, results: a.results })} style={{ padding: "4px 8px", fontSize: 10, color: PURPLE, background: "transparent", border: `1px solid ${PURPLE}55`, borderRadius: 4, cursor: "pointer" }}>👁</button>{isPaused ? <button onClick={() => actOn(a.fb_ad_id, "resume")} style={{ padding: "4px 8px", fontSize: 10, color: "#16a34a", background: "transparent", border: "1px solid rgba(16,163,74,0.3)", borderRadius: 4, cursor: "pointer" }}>▶</button> : <button onClick={() => actOn(a.fb_ad_id, "pause")} style={{ padding: "4px 8px", fontSize: 10, color: "#dc2626", background: "transparent", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 4, cursor: "pointer" }}>⏸</button>}</div></Td>
                           </tr>
                         );
                       })}
@@ -276,6 +289,22 @@ export default function TrafickerDashboard() {
                 </div>
               </section>
             ) : <EmptyTab emoji="📋" title="Sin ads cargados" sub="Pulsa ↻ Sync 30d arriba para traerlos desde Meta." />
+          )}
+
+          {/* ─── Evolución mensual ─── */}
+          {tab === "evolucion" && (
+            <EvolutionWrapper
+              accountId={selectedAcc}
+              data={evolutionData}
+              setData={setEvolutionData}
+              metric={evolutionMetric}
+              setMetric={setEvolutionMetric}
+            />
+          )}
+
+          {/* ─── Bitácora ─── */}
+          {tab === "bitacora" && (
+            <BitacoraTab accountId={selectedAcc} fbAccountId={accounts.find(a => a.id === selectedAcc)?.fb_account_id ?? null} />
           )}
 
           {/* ─── Drill-down · Extras · Daily brief · Cuentas · Tareas ─── */}
@@ -315,6 +344,9 @@ export default function TrafickerDashboard() {
 
       {showTokenModal && <TokenConnectModal onClose={() => setShowTokenModal(false)} onDone={() => { setShowTokenModal(false); loadAccounts(); }} />}
       {showCreateModal && <CreateCampaignModal accountId={selectedAcc} accounts={accounts.map(a => ({ id: a.id, fb_account_id: a.fb_account_id, name: a.name, currency: a.currency }))} onClose={() => setShowCreateModal(false)} />}
+      <AdPreviewModalNew open={!!previewAdData} ad={previewAdData} onClose={() => setPreviewAdData(null)} />
+      {/* Unused — DateRangePicker disponible para filtros futuros */}
+      {false && <DateRangePicker value={dateRange} onChange={setDateRange} compare={compareMode} onCompareChange={setCompareMode} />}
 
       {diagResult && (
         <div onClick={() => setDiagResult(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -919,3 +951,34 @@ function EmptyTab({ emoji, title, sub }: { emoji: string; title: string; sub: st
 const hd: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#1a1a2e", margin: "0 0 8px" };
 const btnPrimary: React.CSSProperties = { padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: "none", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, color: "#fff", cursor: "pointer", fontFamily: "inherit" };
 const btnSecondary: React.CSSProperties = { padding: "7px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "1px solid rgba(0,0,0,0.12)", background: "#fff", color: "#475569", cursor: "pointer", fontFamily: "inherit" };
+
+function EvolutionWrapper({ accountId, data, setData, metric, setMetric }: { accountId: string; data: MonthPoint[]; setData: (d: MonthPoint[]) => void; metric: Metric; setMetric: (m: Metric) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [months, setMonths] = useState(6);
+
+  useEffect(() => {
+    if (!accountId) return;
+    setLoading(true);
+    fetch(`/api/traficker/evolution-monthly?account_id=${accountId}&months=${months}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : { months: [] })
+      .then(d => setData(d.months ?? []))
+      .finally(() => setLoading(false));
+  }, [accountId, months, setData]);
+
+  if (!accountId) {
+    return <div style={{ padding: 30, background: "#fff", borderRadius: 12, color: "#666", textAlign: "center", border: "1px solid rgba(0,0,0,0.06)" }}>Selecciona una cuenta arriba para ver la evolución.</div>;
+  }
+
+  return (
+    <section>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <strong style={{ fontSize: 12, color: "#666" }}>Periodo:</strong>
+        {[3, 6, 12, 18, 24].map(m => (
+          <button key={m} onClick={() => setMonths(m)} style={{ padding: "5px 11px", fontSize: 11.5, fontWeight: 700, background: months === m ? PURPLE : "rgba(106,23,140,0.05)", color: months === m ? "#fff" : PURPLE, border: "none", borderRadius: 999, cursor: "pointer" }}>{m}m</button>
+        ))}
+        {loading && <span style={{ marginLeft: "auto", fontSize: 11, color: "#888" }}>Cargando…</span>}
+      </div>
+      <MonthlyEvolutionChart data={data} metric={metric} onMetricChange={(m) => setMetric(m as Metric)} />
+    </section>
+  );
+}
