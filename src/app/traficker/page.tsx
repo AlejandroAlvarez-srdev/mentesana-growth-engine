@@ -43,11 +43,32 @@ export default function TrafickerDashboard() {
   }
 
   const loadAccounts = () => fetch("/api/agent/meta/accounts", { credentials: "include" }).then(r => r.json()).then(d => setAccounts(d.accounts ?? []));
-  const loadDash = (accId: string) => {
-    setLoadingDash(true);
+  const loadDash = (accId: string, silent = false) => {
+    if (!silent) setLoadingDash(true);
     const url = accId ? `/api/agent/meta/dashboard?account_id=${accId}` : "/api/agent/meta/dashboard";
-    fetch(url, { credentials: "include" }).then(r => r.json()).then(d => setDashboard(d)).finally(() => setLoadingDash(false));
+    fetch(url, { credentials: "include" }).then(r => r.json()).then(d => setDashboard(d)).finally(() => { if (!silent) setLoadingDash(false); });
   };
+
+  // Live silent sync: si la cuenta seleccionada no ha sincronizado en >5 min,
+  // dispara sync silencioso al cambiar de cuenta. Reusa /api/agent/meta/sync.
+  async function liveSync(accId: string, force = false) {
+    if (!accId) return;
+    const acc = accounts.find(a => a.id === accId);
+    if (!force && acc?.last_synced_at) {
+      const age = Date.now() - new Date(acc.last_synced_at).getTime();
+      if (age < 5 * 60 * 1000) return; // fresco
+    }
+    try {
+      await fetch("/api/agent/meta/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_id: accId, date_preset: "last_30d" }),
+      });
+      loadAccounts();
+      loadDash(accId, true);
+    } catch {}
+  }
 
   useEffect(() => {
     fetch("/api/traficker/whoami", { credentials: "include" })
@@ -59,6 +80,15 @@ export default function TrafickerDashboard() {
     loadAccounts();
     loadDash("");
   }, []);
+
+  // Auto-sync al cambiar cuenta + polling cada 60s para mantener dashboard live.
+  useEffect(() => {
+    if (!selectedAcc) return;
+    void liveSync(selectedAcc);
+    const polling = setInterval(() => loadDash(selectedAcc, true), 60_000);
+    return () => clearInterval(polling);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAcc, accounts.length]);
 
   async function logout() {
     if (me?.via_admin) { window.location.href = "/ceo"; return; }
@@ -121,9 +151,9 @@ export default function TrafickerDashboard() {
                 <option value="">📂 Todas las cuentas</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name} {a.currency ? `(${a.currency})` : ""}</option>)}
               </select>
-              {selectedAcc && <button onClick={() => sync(selectedAcc)} disabled={syncing} style={{ ...btnSecondary, opacity: syncing ? 0.6 : 1 }}>{syncing ? "↻ Sincronizando…" : "↻ Sync 30d"}</button>}
+              {selectedAcc && <button onClick={() => sync(selectedAcc)} disabled={syncing} style={{ ...btnSecondary, opacity: syncing ? 0.6 : 1 }}>{syncing ? "↻ Sincronizando…" : "↻ Force sync"}</button>}
               {selectedAcc && <button onClick={() => diagnose(selectedAcc)} style={{ ...btnSecondary, color: "#dc2626", borderColor: "rgba(220,38,38,0.3)" }}>🩺 Diagnosticar</button>}
-              {selectedAcc && (() => { const a = accounts.find(x => x.id === selectedAcc); return a?.last_synced_at ? <span style={{ fontSize: 11, color: "#888", marginLeft: 4 }}>Sync: {new Date(a.last_synced_at).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> : null; })()}
+              {selectedAcc && <LiveBadge lastSyncedAt={accounts.find(x => x.id === selectedAcc)?.last_synced_at ?? null} />}
               <div style={{ flex: 1 }} />
               <a href="/agent/meta-auditor" style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${PURPLE}33`, background: "#fff", color: PURPLE, textDecoration: "none", fontFamily: "inherit" }}>🤖 Auditor</a>
               <button onClick={() => setShowCreateModal(true)} style={btnPrimary}>+ Crear en Meta</button>
@@ -951,6 +981,24 @@ function EmptyTab({ emoji, title, sub }: { emoji: string; title: string; sub: st
 const hd: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#1a1a2e", margin: "0 0 8px" };
 const btnPrimary: React.CSSProperties = { padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: "none", background: `linear-gradient(135deg, ${PURPLE}, #8B2FB5)`, color: "#fff", cursor: "pointer", fontFamily: "inherit" };
 const btnSecondary: React.CSSProperties = { padding: "7px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "1px solid rgba(0,0,0,0.12)", background: "#fff", color: "#475569", cursor: "pointer", fontFamily: "inherit" };
+
+function LiveBadge({ lastSyncedAt }: { lastSyncedAt: string | null }) {
+  const [, force] = useState(0);
+  useEffect(() => { const t = setInterval(() => force(n => n + 1), 30_000); return () => clearInterval(t); }, []);
+  if (!lastSyncedAt) {
+    return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: 10.5, fontWeight: 800, background: "#fef3c7", color: "#92400e", borderRadius: 999 }}>⏳ Sin sync</span>;
+  }
+  const ageMin = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 60_000);
+  const isLive = ageMin < 5;
+  const ageLabel = ageMin < 1 ? "ahora" : ageMin < 60 ? `${ageMin}m` : `${Math.floor(ageMin / 60)}h${ageMin % 60 ? ` ${ageMin % 60}m` : ""}`;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: 10.5, fontWeight: 800, background: isLive ? "rgba(16,163,74,0.14)" : "rgba(217,119,6,0.14)", color: isLive ? "#065f46" : "#92400e", borderRadius: 999 }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: isLive ? "#16a34a" : "#d97706", boxShadow: isLive ? "0 0 0 0 rgba(16,163,74,0.6)" : "none", animation: isLive ? "livepulse 1.6s infinite" : "none" }} />
+      {isLive ? "LIVE" : "STALE"} · hace {ageLabel}
+      <style>{`@keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(16,163,74,0.6); } 70% { box-shadow: 0 0 0 6px rgba(16,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(16,163,74,0); } }`}</style>
+    </span>
+  );
+}
 
 function EvolutionWrapper({ accountId, data, setData, metric, setMetric }: { accountId: string; data: MonthPoint[]; setData: (d: MonthPoint[]) => void; metric: Metric; setMetric: (m: Metric) => void }) {
   const [loading, setLoading] = useState(false);
