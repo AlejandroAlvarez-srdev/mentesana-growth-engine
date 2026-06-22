@@ -34,17 +34,23 @@ export default function ActiveAdsStrip({ accountId }: { accountId: string | null
   }, [accountId]);
 
   const sync = useCallback(async () => {
-    if (!accountId) { setErr("Selecciona una cuenta"); return; }
     setSyncing(true); setErr(null);
     try {
       const r = await fetch("/api/agent/meta/sync-status", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_id: accountId }),
+        body: JSON.stringify(accountId ? { account_id: accountId } : {}),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(j?.message || j?.error || `HTTP ${r.status}`); return; }
+      if (j?.per_account) {
+        const failed = j.per_account.filter((p: { errors: number; error?: string }) => p.errors > 0 || p.error);
+        if (failed.length && j.upserted === 0) {
+          setErr(`Meta rechazó ${failed.length}/${j.accounts_processed} cuentas: ${failed.map((p: { account_name: string; error?: string }) => `${p.account_name}=${p.error}`).slice(0, 2).join(" · ")}`);
+          return;
+        }
+      }
       await load();
     } finally { setSyncing(false); }
   }, [accountId, load]);
@@ -52,8 +58,8 @@ export default function ActiveAdsStrip({ accountId }: { accountId: string | null
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (counts && counts.stale && accountId && !syncing) sync();
-  }, [counts, accountId, syncing, sync]);
+    if (counts && counts.stale && !syncing) sync();
+  }, [counts, syncing, sync]);
 
   const syncedLabel = counts?.last_synced_at ? timeAgo(counts.last_synced_at) : "nunca";
 
@@ -67,7 +73,7 @@ export default function ActiveAdsStrip({ accountId }: { accountId: string | null
             {counts?.stale && !syncing && <span style={{ color: "#d97706", marginLeft: 6, fontWeight: 700 }}>· datos antiguos</span>}
           </div>
         </div>
-        <button onClick={sync} disabled={syncing || !accountId} style={{ padding: "7px 14px", fontSize: 11.5, fontWeight: 700, background: PURPLE, color: "#fff", border: "none", borderRadius: 7, cursor: syncing || !accountId ? "default" : "pointer", opacity: syncing || !accountId ? 0.55 : 1 }}>{syncing ? "Sincronizando…" : "🔄 Sincronizar ahora"}</button>
+        <button onClick={sync} disabled={syncing} style={{ padding: "7px 14px", fontSize: 11.5, fontWeight: 700, background: PURPLE, color: "#fff", border: "none", borderRadius: 7, cursor: syncing ? "default" : "pointer", opacity: syncing ? 0.55 : 1 }}>{syncing ? "Sincronizando…" : accountId ? "🔄 Sincronizar cuenta" : "🔄 Sincronizar todas"}</button>
       </div>
 
       {err && <div style={{ padding: 8, background: "#fee2e2", color: "#991b1b", borderRadius: 6, fontSize: 11.5, marginBottom: 10 }}>⚠️ {err}</div>}
