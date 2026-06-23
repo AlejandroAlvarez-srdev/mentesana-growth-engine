@@ -11,6 +11,8 @@ import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_componen
 import BitacoraTab from "./_components/BitacoraTab";
 import AssignTaskModal from "./_components/AssignTaskModal";
 import ActiveAdsStrip from "./_components/ActiveAdsStrip";
+import ClinicalInsightsTab from "./_components/ClinicalInsightsTab";
+import Sales999Tab from "./_components/Sales999Tab";
 
 const PURPLE = "#6A178C";
 
@@ -195,6 +197,8 @@ export default function TrafickerDashboard() {
               { key: "drilldown", label: "Drill-down", emoji: "🔬" },
               { key: "extras", label: "Extras", emoji: "💡" },
               { key: "brief", label: "Daily brief", emoji: "📨" },
+              { key: "ventas999", label: "Ventas 9,99€", emoji: "🧾" },
+              { key: "insights", label: "Insights clínicos", emoji: "🧠" },
               { key: "cuentas", label: "Cuentas", emoji: "⚙️", badge: accounts.length },
               { key: "tareas", label: "Tareas", emoji: "📋" },
             ]}
@@ -392,6 +396,10 @@ export default function TrafickerDashboard() {
               </div>
             </section>
           )}
+          {tab === "ventas999" && <Sales999Tab />}
+
+          {tab === "insights" && <ClinicalInsightsTab />}
+
           {tab === "tareas" && (
             <>
               <div style={{ marginBottom: 12 }}>
