@@ -44,6 +44,11 @@ export default function TrackingScripts() {
           `}
         </Script>
       )}
+      {analytics && (
+        <Script id="funnelytics" strategy="afterInteractive">
+          {`(function(funnel) {var deferredEvents = [];window.funnelytics = {events: {trigger: function (name, attributes, callback, opts) {deferredEvents.push({name: name, attributes: attributes, callback: callback, opts: opts});}}};var insert = document.getElementsByTagName('script')[0],script = document.createElement('script');script.addEventListener('load', function() {window.funnelytics.init(funnel, false, deferredEvents, {"anonymiseUsers":false});});script.src = 'https://cdn.funnelytics.io/track-v3.js';script.type = 'text/javascript';script.async = true;insert.parentNode.insertBefore(script, insert);})('8e25b10e-8d12-4d68-ac23-12ab8faf4fa8');`}
+        </Script>
+      )}
       {marketing && (
         <Script id="meta-pixel" strategy="afterInteractive">
           {`
