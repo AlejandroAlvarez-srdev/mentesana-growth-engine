@@ -157,19 +157,56 @@ const TOOLS = [
     description: "Evolución mensual de las menciones de UN tema concreto (para ver dolores en alza). Recuentos agregados por mes con k-anonimato.",
     input_schema: { type: "object", properties: { topic: { type: "string", description: "Clave del tema (ansiedad, pareja, duelo, autoestima, laboral, insomnio, trauma, toc, alimentacion, tdah, familia, dependencia, regulacion, soledad, social, maternidad, panico)." }, corpus: { type: "string", enum: ["clinical", "sessions", "both"] }, months: { type: "number", description: "Nº de meses hacia atrás (2-12, default 6)." } }, required: ["topic"] },
   },
+  {
+    name: "search_sessions",
+    description: "Busca por SIGNIFICADO en lo que dicen los pacientes (notas de sesión y expectativas del diagnóstico) y devuelve fragmentos ANÓNIMOS de lo que expresan, en sus propias palabras. Úsalo para frases, dolores recurrentes, cómo describen su problema, objeciones, etc. Los fragmentos vienen ya saneados (sin nombres, emails, teléfonos ni IDs). NUNCA incluye de quién es cada fragmento.",
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 8, máx 15)." } }, required: ["query"] },
+  },
 ];
 
-const SYSTEM = `Eres el Consultor de Insights Clínicos (anonimizado) de Mente Sana Psicología, para el equipo de marketing/tráfico.
+const SYSTEM = `Eres el Consultor de Insights Clínicos de Mente Sana Psicología, para el equipo de marketing/tráfico.
 
-Tu trabajo: ayudar al traficker a entender QUÉ TEMAS Y DOLORES son más frecuentes en la terapia real (historiales clínicos y sesiones grabadas) para orientar campañas, ángulos de anuncios y mensajes — SIEMPRE en agregado.
+Tu trabajo: ayudar al traficker a entender la terapia real (historiales clínicos y sesiones) para orientar campañas, ángulos y mensajes. PUEDES contar:
+- QUÉ dicen los pacientes, sus frases y cómo describen su problema en sus propias palabras.
+- Temas y dolores recurrentes, objeciones, expectativas.
+- Recuentos agregados por tema y su evolución.
 
-REGLA ABSOLUTA E INNEGOCIABLE: jamás des información de ningún paciente concreto. No tienes acceso a nombres, IDs, teléfonos, alias, fechas de citas individuales ni a citas textuales de sesiones. Solo manejas RECUENTOS AGREGADOS por tema. Si te piden identificar a alguien, "el caso de…", una transcripción, una frase literal de un paciente, o cualquier dato individual, RECHAZA con educación y recuérdales que este panel es 100% anónimo y agregado por diseño.
+LO ÚNICO PROHIBIDO: revelar datos que IDENTIFIQUEN a un paciente concreto. NUNCA des nombres, apellidos, email, teléfono, ni ningún dato personal que permita saber QUIÉN dijo algo. Si un fragmento trae un nombre propio u otro dato personal, NO lo menciones: habla siempre de "un/a paciente", "varios", "muchos", en genérico. Está perfecto citar lo que dicen y los patrones; lo que no se da es la identidad de quién lo dice.
 
-Anonimato: los grupos con menos de ${MIN_GROUP} registros se ocultan (k-anonimato). Si una herramienta devuelve "suppressed", explica que no hay volumen suficiente para reportarlo de forma anónima.
+Herramientas:
+- search_sessions → para frases, recurrencias y cómo se expresan los pacientes (fragmentos anónimos, ya saneados). Úsala cuando pregunten "qué dicen / cómo describen / qué frases usan".
+- topic_frequencies / topic_trend / corpus_overview → para cantidades y evolución (recuentos con k-anonimato ${MIN_GROUP}; "menciones del tema", NO nº de pacientes).
 
-Importante: los recuentos son "menciones del tema" en los registros, NO número de pacientes. No los presentes como pacientes.
+Responde en español, conciso, y cuando ayude añade una recomendación de marketing accionable (ángulo, mensaje, segmento) — idealmente usando las propias palabras de los pacientes. Nunca inventes datos.`;
 
-Usa las herramientas para responder con datos reales. Responde en español, conciso (máx 3 párrafos), con números/porcentajes y, cuando ayude, una recomendación de marketing accionable (ángulo, mensaje, segmento). Nunca inventes cifras.`;
+// Saneo de fragmentos antes de dárselos al modelo: quita prefijos con IDs, emails,
+// teléfonos y referencias a psicóloga/cita N. (Los nombres propios los filtra además
+// el system prompt, que prohíbe nombrarlos.)
+function scrubSnippet(text: string): string {
+  return String(text || "")
+    .replace(/^Nota clínica psicóloga\s+\d+\s*\([^)]*\):\s*/i, "")
+    .replace(/\bpsic[óo]loga\s+\d+/gi, "una psicóloga")
+    .replace(/\bcita\s+\d+/gi, "una sesión")
+    .replace(/\bALERTA:/gi, "")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\b\+?\d[\d\s().-]{7,}\d\b/g, "[teléfono]")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+async function toolSearchSessions(query: string, limit: any) {
+  const q = String(query ?? "").trim();
+  if (!q) return { error: "missing_query" };
+  const { voyageEmbed } = await import("@/lib/voyage-embed");
+  const emb = await voyageEmbed(q, "query");
+  if (!emb) return { error: "embedding_failed" };
+  const n = Math.min(Math.max(Number(limit) || 8, 1), 15);
+  const { data, error } = await sb.rpc("jarvis_search", { query_embedding: `[${emb.join(",")}]`, kinds: ["clinical_note", "diagnostico_test"], match_limit: n });
+  if (error) return { error: error.message };
+  // SOLO devolvemos el texto saneado. Sin source_id, sin metadata, sin de quién es.
+  const snippets = (data ?? []).map((r: any) => scrubSnippet(r.content)).filter((s: string) => s.length > 15);
+  return { snippets, note: "Fragmentos anónimos (sin identidad). No menciones nombres ni datos personales aunque aparezcan." };
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireTrafickerOrAdmin(req);
@@ -207,6 +244,7 @@ export async function POST(req: NextRequest) {
         if (tu.name === "topic_frequencies") result = await toolTopicFrequencies(corpus);
         else if (tu.name === "corpus_overview") result = await toolCorpusOverview(corpus);
         else if (tu.name === "topic_trend") result = await toolTopicTrend(String(tu.input?.topic ?? ""), corpus, tu.input?.months);
+        else if (tu.name === "search_sessions") result = await toolSearchSessions(String(tu.input?.query ?? ""), tu.input?.limit);
         else result = { error: "unknown_tool" };
         toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 8000) });
       }

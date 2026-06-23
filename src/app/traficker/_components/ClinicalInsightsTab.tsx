@@ -9,10 +9,10 @@ const PURPLE = "#6A178C";
 type Msg = { role: "user" | "assistant"; content: string };
 
 const SUGGESTIONS = [
-  "¿Cuáles son los dolores más comunes en terapia?",
+  "¿Cómo describen los pacientes su ansiedad, con sus palabras?",
+  "¿Qué frases recurrentes dicen sobre dormir mal?",
   "¿Qué temas están en alza los últimos 6 meses?",
-  "¿Pesa más la ansiedad o los problemas de pareja?",
-  "Dame ángulos de campaña según los motivos más frecuentes",
+  "Dame ángulos de campaña con frases reales de pacientes",
 ];
 
 export default function ClinicalInsightsTab() {
@@ -53,8 +53,8 @@ export default function ClinicalInsightsTab() {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", background: "rgba(106,23,140,0.05)", border: `1px solid ${PURPLE}22`, borderRadius: 12 }}>
         <span style={{ fontSize: 18 }}>🔒</span>
         <div style={{ fontSize: 11.5, color: "#475569", lineHeight: 1.5 }}>
-          <strong style={{ color: PURPLE }}>Panel 100% anónimo y agregado.</strong> Te da patrones de los historiales clínicos y sesiones grabadas (qué dolores son más comunes, qué temas suben) para orientar campañas.
-          {" "}<strong>Nunca</strong> muestra información de ningún paciente concreto: ni nombres, ni citas, ni casos individuales. Los grupos de menos de 10 registros se ocultan.
+          <strong style={{ color: PURPLE }}>Insights anónimos de las sesiones.</strong> Te da lo que dicen los pacientes, sus frases y dolores recurrentes, y la evolución de los temas — para orientar campañas y mensajes.
+          {" "}<strong>Nunca</strong> revela datos que identifiquen a un paciente: ni nombres, ni email, ni teléfono. Habla siempre en genérico.
         </div>
       </div>
 
