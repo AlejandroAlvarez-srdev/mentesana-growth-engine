@@ -208,6 +208,63 @@ async function toolSearchSessions(query: string, limit: any) {
   return { snippets, note: "Fragmentos anónimos (sin identidad). No menciones nombres ni datos personales aunque aparezcan." };
 }
 
+// ── Persistencia del historial (best-effort, no rompe el chat si falla) ──────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function saveTurn(conversationId: string, email: string, name: string, question: string, answer: string) {
+  try {
+    await sb.from("traficker_chat_messages").insert([
+      { conversation_id: conversationId, traficker_email: email, traficker_name: name, role: "user", content: question },
+      { conversation_id: conversationId, traficker_email: email, traficker_name: name, role: "assistant", content: answer },
+    ]);
+  } catch { /* el historial es secundario; nunca debe tumbar la respuesta */ }
+}
+
+// GET ?conversation_id=… → mensajes de esa conversación (de este traficker).
+// GET sin params       → lista de conversaciones del traficker (id, título, fecha, nº).
+export async function GET(req: NextRequest) {
+  const auth = await requireTrafickerOrAdmin(req);
+  if (auth instanceof NextResponse) return auth;
+
+  const url = new URL(req.url);
+  const convId = url.searchParams.get("conversation_id");
+
+  if (convId && UUID_RE.test(convId)) {
+    const { data, error } = await sb
+      .from("traficker_chat_messages")
+      .select("role, content, created_at")
+      .eq("traficker_email", auth.email)
+      .eq("conversation_id", convId)
+      .order("created_at", { ascending: true })
+      .limit(400);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ conversation_id: convId, messages: data ?? [] });
+  }
+
+  // Últimos mensajes del traficker → agrupar por conversación en JS.
+  const { data, error } = await sb
+    .from("traficker_chat_messages")
+    .select("conversation_id, role, content, created_at")
+    .eq("traficker_email", auth.email)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const byConv = new Map<string, { conversation_id: string; title: string; last_at: string; count: number }>();
+  for (const m of data ?? []) {
+    const existing = byConv.get(m.conversation_id);
+    if (!existing) {
+      byConv.set(m.conversation_id, { conversation_id: m.conversation_id, title: "", last_at: m.created_at, count: 1 });
+    } else {
+      existing.count++;
+    }
+    // Como vienen en orden descendente, la última pregunta de usuario que veamos es la más antigua → título.
+    if (m.role === "user") byConv.get(m.conversation_id)!.title = m.content.slice(0, 80);
+  }
+  const conversations = [...byConv.values()].sort((a, b) => (a.last_at < b.last_at ? 1 : -1));
+  return NextResponse.json({ conversations });
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireTrafickerOrAdmin(req);
   if (auth instanceof NextResponse) return auth;
@@ -218,6 +275,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const question = String(body.question ?? "").trim().slice(0, 1500);
   if (!question) return NextResponse.json({ error: "empty_question" }, { status: 400 });
+
+  const conversationId = UUID_RE.test(String(body.conversation_id ?? "")) ? String(body.conversation_id) : null;
 
   // Historial de conversación lo mantiene el cliente (sin persistencia, sin PII).
   const history: { role: string; content: string }[] = Array.isArray(body.history)
@@ -253,7 +312,8 @@ export async function POST(req: NextRequest) {
     }
 
     const text = (data.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
-    return NextResponse.json({ answer: text, iterations: i + 1 });
+    if (conversationId) await saveTurn(conversationId, auth.email, auth.name, question, text);
+    return NextResponse.json({ answer: text, iterations: i + 1, conversation_id: conversationId });
   }
   return NextResponse.json({ error: "max_iterations", message: "Reformula la pregunta, por favor." }, { status: 500 });
 }
