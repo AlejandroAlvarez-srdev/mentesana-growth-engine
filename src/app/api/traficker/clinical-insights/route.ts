@@ -21,6 +21,9 @@ const MIN_GROUP = 10;
 // Columnas de texto sobre las que se cuenta (NUNCA se seleccionan ni se devuelven, solo COUNT).
 const CLIN_COLS = ["highlights", "how_went", "patient_state", "intervention"];
 const SESS_COLS = ["summary_md", "raw_excerpt"];
+const CHAT_COLS = ["content"];
+// Columnas de texto por corpus (para los recuentos ILIKE por tema).
+const COLS_BY_KIND: Record<Kind, string[]> = { clinical: CLIN_COLS, sessions: SESS_COLS, chats: CHAT_COLS };
 
 // Taxonomía de temas clínicos (stems sin acento donde es seguro, para que ILIKE casa con o sin tilde).
 const TAXONOMY: { topic: string; label: string; syn: string[] }[] = [
@@ -54,11 +57,19 @@ function buildOr(cols: string[], syn: string[]): string {
   return terms.join(",");
 }
 
-async function countCorpus(kind: "clinical" | "sessions", orStr: string | null, from?: string, to?: string): Promise<number> {
-  const table = kind === "clinical" ? "psychologist_clinical_notes" : "session_notes";
-  const dateCol = kind === "clinical" ? "session_date" : "meet_started_at";
+// Fuentes disponibles. chats = mensajes ENTRANTES del paciente en el CRM (type='received').
+type Kind = "clinical" | "sessions" | "chats";
+const KIND_CFG: Record<Kind, { table: string; dateCol: string }> = {
+  clinical: { table: "psychologist_clinical_notes", dateCol: "session_date" },
+  sessions: { table: "session_notes", dateCol: "meet_started_at" },
+  chats: { table: "messages_mentesana", dateCol: "created_at" },
+};
+
+async function countCorpus(kind: Kind, orStr: string | null, from?: string, to?: string): Promise<number> {
+  const { table, dateCol } = KIND_CFG[kind];
   let q: any = sb.from(table).select("id", { count: "exact", head: true });
   if (kind === "sessions") q = q.neq("status", "discarded");
+  if (kind === "chats") q = q.eq("type", "received"); // solo lo que escribe el paciente
   if (orStr) q = q.or(orStr);
   if (from) q = q.gte(dateCol, from);
   if (to) q = q.lt(dateCol, to);
@@ -67,9 +78,12 @@ async function countCorpus(kind: "clinical" | "sessions", orStr: string | null, 
   return count ?? 0;
 }
 
-type Corpus = "clinical" | "sessions" | "both";
-function corporaOf(c: Corpus): ("clinical" | "sessions")[] {
-  return c === "both" ? ["clinical", "sessions"] : [c];
+// "all" = las tres fuentes; "both" se mantiene (clínicos + sesiones) por retrocompat.
+type Corpus = Kind | "both" | "all";
+function corporaOf(c: Corpus): Kind[] {
+  if (c === "all") return ["clinical", "sessions", "chats"];
+  if (c === "both") return ["clinical", "sessions"];
+  return [c];
 }
 
 // ── Herramientas (solo agregación) ──────────────────────────────────────────
@@ -81,7 +95,7 @@ async function toolTopicFrequencies(corpus: Corpus) {
 
   const rows = await Promise.all(
     TAXONOMY.map(async (t) => {
-      const counts = await Promise.all(kinds.map((k) => countCorpus(k, buildOr(k === "clinical" ? CLIN_COLS : SESS_COLS, t.syn))));
+      const counts = await Promise.all(kinds.map((k) => countCorpus(k, buildOr(COLS_BY_KIND[k], t.syn))));
       const c = counts.reduce((a, b) => a + b, 0);
       return { topic: t.topic, label: t.label, mentions: guard(c), pct: guard(c) != null ? Math.round((c / total) * 1000) / 10 : null };
     }),
@@ -114,6 +128,10 @@ async function toolCorpusOverview(corpus: Corpus) {
     const total = await countCorpus("sessions", null);
     out.sesiones_grabadas = total < MIN_GROUP ? { suppressed: true } : { total_sesiones: total };
   }
+  if (kinds.includes("chats")) {
+    const total = await countCorpus("chats", null);
+    out.chats_pacientes = total < MIN_GROUP ? { suppressed: true } : { total_mensajes_entrantes: total };
+  }
   out.note = "Solo agregados. Ningún dato identifica a un paciente concreto.";
   return out;
 }
@@ -133,7 +151,7 @@ async function toolTopicTrend(topicKey: string, corpus: Corpus, months: number) 
   }
   const series = await Promise.all(
     buckets.map(async (b) => {
-      const counts = await Promise.all(kinds.map((k) => countCorpus(k, buildOr(k === "clinical" ? CLIN_COLS : SESS_COLS, t.syn), b.from, b.to)));
+      const counts = await Promise.all(kinds.map((k) => countCorpus(k, buildOr(COLS_BY_KIND[k], t.syn), b.from, b.to)));
       const c = counts.reduce((a, x) => a + x, 0);
       return { month: b.month, mentions: guard(c) };
     }),
@@ -145,37 +163,44 @@ const TOOLS = [
   {
     name: "topic_frequencies",
     description: "Devuelve cuántas veces aparece cada tema clínico (ansiedad, pareja, duelo, autoestima, etc.) en los historiales y/o sesiones. Solo recuentos agregados, nunca pacientes. Úsalo para saber qué dolores son más comunes.",
-    input_schema: { type: "object", properties: { corpus: { type: "string", enum: ["clinical", "sessions", "both"], description: "clinical=historiales, sessions=sesiones grabadas, both=ambos (default)." } } },
+    input_schema: { type: "object", properties: { corpus: { type: "string", enum: ["clinical", "sessions", "chats", "all"], description: "clinical=historiales, sessions=sesiones grabadas, chats=mensajes entrantes del paciente, all=las tres (default)." } } },
   },
   {
     name: "corpus_overview",
     description: "Resumen agregado del volumen disponible: nº de historiales/sesiones, % con red flags, asistencia. Sin datos de ningún paciente.",
-    input_schema: { type: "object", properties: { corpus: { type: "string", enum: ["clinical", "sessions", "both"] } } },
+    input_schema: { type: "object", properties: { corpus: { type: "string", enum: ["clinical", "sessions", "chats", "all"] } } },
   },
   {
     name: "topic_trend",
     description: "Evolución mensual de las menciones de UN tema concreto (para ver dolores en alza). Recuentos agregados por mes con k-anonimato.",
-    input_schema: { type: "object", properties: { topic: { type: "string", description: "Clave del tema (ansiedad, pareja, duelo, autoestima, laboral, insomnio, trauma, toc, alimentacion, tdah, familia, dependencia, regulacion, soledad, social, maternidad, panico)." }, corpus: { type: "string", enum: ["clinical", "sessions", "both"] }, months: { type: "number", description: "Nº de meses hacia atrás (2-12, default 6)." } }, required: ["topic"] },
+    input_schema: { type: "object", properties: { topic: { type: "string", description: "Clave del tema (ansiedad, pareja, duelo, autoestima, laboral, insomnio, trauma, toc, alimentacion, tdah, familia, dependencia, regulacion, soledad, social, maternidad, panico)." }, corpus: { type: "string", enum: ["clinical", "sessions", "chats", "all"] }, months: { type: "number", description: "Nº de meses hacia atrás (2-12, default 6)." } }, required: ["topic"] },
   },
   {
     name: "search_sessions",
     description: "Busca por SIGNIFICADO en lo que dicen los pacientes (notas de sesión y expectativas del diagnóstico) y devuelve fragmentos ANÓNIMOS de lo que expresan, en sus propias palabras. Úsalo para frases, dolores recurrentes, cómo describen su problema, objeciones, etc. Los fragmentos vienen ya saneados (sin nombres, emails, teléfonos ni IDs). NUNCA incluye de quién es cada fragmento.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 8, máx 15)." } }, required: ["query"] },
   },
+  {
+    name: "search_chats",
+    description: "Busca por palabras clave en lo que ESCRIBEN los pacientes por WhatsApp/chat (solo mensajes entrantes) y devuelve fragmentos ANÓNIMOS y saneados. Úsalo para saber cómo preguntan, qué objeciones/dudas ponen antes de comprar, con qué palabras piden ayuda, quejas, etc. Los fragmentos vienen sin nombres, emails, teléfonos ni IDs. NUNCA incluye de quién es cada fragmento.",
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Palabras o tema a buscar en los chats. Ej: 'precio', 'no tengo tiempo', 'ansiedad', 'reembolso'." }, limit: { type: "number", description: "Nº de fragmentos (default 8, máx 15)." } }, required: ["query"] },
+  },
 ];
 
 const SYSTEM = `Eres el Consultor de Insights Clínicos de Mente Sana Psicología, para el equipo de marketing/tráfico.
 
-Tu trabajo: ayudar al traficker a entender la terapia real (historiales clínicos y sesiones) para orientar campañas, ángulos y mensajes. PUEDES contar:
+Tu trabajo: ayudar al traficker a entender la terapia real y la voz del paciente para orientar campañas, ángulos y mensajes. Tienes TRES fuentes: historiales clínicos, sesiones grabadas y los chats (lo que la gente escribe por WhatsApp). PUEDES contar:
 - QUÉ dicen los pacientes, sus frases y cómo describen su problema en sus propias palabras.
+- Cómo preguntan, qué dudas/objeciones ponen en el chat antes de comprar.
 - Temas y dolores recurrentes, objeciones, expectativas.
 - Recuentos agregados por tema y su evolución.
 
 LO ÚNICO PROHIBIDO: revelar datos que IDENTIFIQUEN a un paciente concreto. NUNCA des nombres, apellidos, email, teléfono, ni ningún dato personal que permita saber QUIÉN dijo algo. Si un fragmento trae un nombre propio u otro dato personal, NO lo menciones: habla siempre de "un/a paciente", "varios", "muchos", en genérico. Está perfecto citar lo que dicen y los patrones; lo que no se da es la identidad de quién lo dice.
 
 Herramientas:
-- search_sessions → para frases, recurrencias y cómo se expresan los pacientes (fragmentos anónimos, ya saneados). Úsala cuando pregunten "qué dicen / cómo describen / qué frases usan".
-- topic_frequencies / topic_trend / corpus_overview → para cantidades y evolución (recuentos con k-anonimato ${MIN_GROUP}; "menciones del tema", NO nº de pacientes).
+- search_sessions → frases y cómo se expresan en historiales/diagnóstico (fragmentos anónimos saneados). "qué dicen / cómo describen".
+- search_chats → cómo escriben por WhatsApp: dudas, objeciones antes de comprar, con qué palabras piden ayuda (fragmentos anónimos saneados).
+- topic_frequencies / topic_trend / corpus_overview → cantidades y evolución por corpus (clinical/sessions/chats/all) con k-anonimato ${MIN_GROUP}; "menciones del tema", NO nº de pacientes.
 
 Responde en español, conciso, y cuando ayude añade una recomendación de marketing accionable (ángulo, mensaje, segmento) — idealmente usando las propias palabras de los pacientes. Nunca inventes datos.`;
 
@@ -206,6 +231,42 @@ async function toolSearchSessions(query: string, limit: any) {
   // SOLO devolvemos el texto saneado. Sin source_id, sin metadata, sin de quién es.
   const snippets = (data ?? []).map((r: any) => scrubSnippet(r.content)).filter((s: string) => s.length > 15);
   return { snippets, note: "Fragmentos anónimos (sin identidad). No menciones nombres ni datos personales aunque aparezcan." };
+}
+
+// Búsqueda en los CHATS del CRM: solo mensajes ENTRANTES del paciente (type='received'),
+// por palabras clave, devolviendo fragmentos ANÓNIMOS y saneados. Sin embeddings (los chats
+// no están indexados), así que casa por términos de la consulta. NUNCA de quién es cada uno.
+async function toolSearchChats(query: string, limit: any) {
+  const q = String(query ?? "").trim();
+  if (!q) return { error: "missing_query" };
+  // Términos: palabras de ≥5 letras (sin acentos ni símbolos que rompan el .or()).
+  const terms = Array.from(new Set(
+    q.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .split(/[^a-z0-9ñ]+/).filter((w) => w.length >= 5),
+  )).slice(0, 6);
+  if (terms.length === 0) return { snippets: [], note: "Consulta demasiado genérica; usa palabras más concretas." };
+  const orStr = terms.map((t) => `content.ilike."*${t}*"`).join(",");
+  const n = Math.min(Math.max(Number(limit) || 8, 1), 15);
+  const { data, error } = await sb
+    .from("messages_mentesana")
+    .select("content")
+    .eq("type", "received")
+    .or(orStr)
+    .order("created_at", { ascending: false })
+    .limit(n * 4);
+  if (error) return { error: error.message };
+  const seen = new Set<string>();
+  const snippets: string[] = [];
+  for (const r of data ?? []) {
+    const s = scrubSnippet(r.content);
+    if (s.length < 15 || s.length > 400) continue; // fuera mensajes muy cortos o parrafadas
+    const key = s.slice(0, 60).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    snippets.push(s);
+    if (snippets.length >= n) break;
+  }
+  return { snippets, note: "Fragmentos anónimos de lo que escriben los pacientes por chat (saneados, sin identidad). No menciones nombres ni datos personales aunque aparezcan." };
 }
 
 // ── Persistencia del historial (best-effort, no rompe el chat si falla) ──────
@@ -289,7 +350,7 @@ export async function POST(req: NextRequest) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": ANTHROPIC_KEY },
-      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: SYSTEM, tools: TOOLS, messages }),
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, system: SYSTEM, tools: TOOLS, messages }),
     });
     if (!r.ok) return NextResponse.json({ error: "claude_error", message: await r.text() }, { status: 500 });
     const data = await r.json();
@@ -299,11 +360,12 @@ export async function POST(req: NextRequest) {
       const toolResults: any[] = [];
       for (const tu of data.content.filter((c: any) => c.type === "tool_use")) {
         let result: any;
-        const corpus: Corpus = ["clinical", "sessions", "both"].includes(tu.input?.corpus) ? tu.input.corpus : "both";
+        const corpus: Corpus = ["clinical", "sessions", "chats", "both", "all"].includes(tu.input?.corpus) ? tu.input.corpus : "all";
         if (tu.name === "topic_frequencies") result = await toolTopicFrequencies(corpus);
         else if (tu.name === "corpus_overview") result = await toolCorpusOverview(corpus);
         else if (tu.name === "topic_trend") result = await toolTopicTrend(String(tu.input?.topic ?? ""), corpus, tu.input?.months);
         else if (tu.name === "search_sessions") result = await toolSearchSessions(String(tu.input?.query ?? ""), tu.input?.limit);
+        else if (tu.name === "search_chats") result = await toolSearchChats(String(tu.input?.query ?? ""), tu.input?.limit);
         else result = { error: "unknown_tool" };
         toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 8000) });
       }
