@@ -177,13 +177,13 @@ const TOOLS = [
   },
   {
     name: "search_sessions",
-    description: "Busca por SIGNIFICADO en lo que dicen los pacientes (notas de sesión y expectativas del diagnóstico) y devuelve fragmentos ANÓNIMOS de lo que expresan, en sus propias palabras. Úsalo para frases, dolores recurrentes, cómo describen su problema, objeciones, etc. Los fragmentos vienen ya saneados (sin nombres, emails, teléfonos ni IDs). NUNCA incluye de quién es cada fragmento.",
-    input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 8, máx 15)." } }, required: ["query"] },
+    description: "Busca por SIGNIFICADO en el corpus embebido de voz del paciente (notas clínicas, expectativas del diagnóstico, tareas terapéuticas y quejas) y devuelve muchos fragmentos ANÓNIMOS de lo que expresan, en sus propias palabras. Úsalo para frases, dolores recurrentes, cómo describen su problema, objeciones, quejas, etc. Sube el limit para barrer la mayoría del corpus. Los fragmentos vienen saneados (sin nombres, emails, teléfonos ni IDs). NUNCA incluye de quién es cada fragmento.",
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 40, máx 100 — sube para leer la mayoría del corpus)." } }, required: ["query"] },
   },
   {
     name: "search_chats",
     description: "Busca por palabras clave en lo que ESCRIBEN los pacientes por WhatsApp/chat (solo mensajes entrantes) y devuelve fragmentos ANÓNIMOS y saneados. Úsalo para saber cómo preguntan, qué objeciones/dudas ponen antes de comprar, con qué palabras piden ayuda, quejas, etc. Los fragmentos vienen sin nombres, emails, teléfonos ni IDs. NUNCA incluye de quién es cada fragmento.",
-    input_schema: { type: "object", properties: { query: { type: "string", description: "Palabras o tema a buscar en los chats. Ej: 'precio', 'no tengo tiempo', 'ansiedad', 'reembolso'." }, limit: { type: "number", description: "Nº de fragmentos (default 8, máx 15)." } }, required: ["query"] },
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Palabras o tema a buscar en los chats. Ej: 'precio', 'no tengo tiempo', 'ansiedad', 'reembolso'." }, limit: { type: "number", description: "Nº de fragmentos (default 12, máx 25)." } }, required: ["query"] },
   },
 ];
 
@@ -202,7 +202,7 @@ Herramientas:
 - search_chats → cómo escriben por WhatsApp: dudas, objeciones antes de comprar, con qué palabras piden ayuda (fragmentos anónimos saneados).
 - topic_frequencies / topic_trend / corpus_overview → cantidades y evolución por corpus (clinical/sessions/chats/all) con k-anonimato ${MIN_GROUP}; "menciones del tema", NO nº de pacientes.
 
-Responde en español, conciso, y cuando ayude añade una recomendación de marketing accionable (ángulo, mensaje, segmento) — idealmente usando las propias palabras de los pacientes. Nunca inventes datos.`;
+Cómo responder (potente y con contexto): NO te quedes en lo superficial. Usa VARIAS herramientas por pregunta y CRUZA las tres fuentes (historiales, sesiones y chats) para dar una respuesta rica y bien fundamentada. Cuando aporte, llama a search_sessions Y search_chats para contrastar cómo lo viven en terapia vs cómo lo escriben antes de comprar. Estructura la respuesta: (1) hallazgo principal con datos/agregados, (2) la voz del paciente (frases anónimas reales que lo ilustren), (3) 2-3 recomendaciones de marketing accionables (ángulo, mensaje/copy usando sus propias palabras, y a qué segmento). Español, directo pero completo. Nunca inventes datos: si una fuente no tiene suficiente, dilo.`;
 
 // Saneo de fragmentos antes de dárselos al modelo: quita prefijos con IDs, emails,
 // teléfonos y referencias a psicóloga/cita N. (Los nombres propios los filtra además
@@ -225,8 +225,11 @@ async function toolSearchSessions(query: string, limit: any) {
   const { voyageEmbed } = await import("@/lib/voyage-embed");
   const emb = await voyageEmbed(q, "query");
   if (!emb) return { error: "embedding_failed" };
-  const n = Math.min(Math.max(Number(limit) || 8, 1), 15);
-  const { data, error } = await sb.rpc("jarvis_search", { query_embedding: `[${emb.join(",")}]`, kinds: ["clinical_note", "diagnostico_test"], match_limit: n });
+  const n = Math.min(Math.max(Number(limit) || 40, 1), 100);
+  // Barre la mayoría del corpus embebido de VOZ DEL PACIENTE: notas clínicas, expectativas
+  // del diagnóstico, tareas y quejas. (Se dejan fuera meta_ad/video_brief/funnel: son material
+  // interno de marketing, no voz del paciente.)
+  const { data, error } = await sb.rpc("jarvis_search", { query_embedding: `[${emb.join(",")}]`, kinds: ["clinical_note", "diagnostico_test", "patient_task", "complaint"], match_limit: n });
   if (error) return { error: error.message };
   // SOLO devolvemos el texto saneado. Sin source_id, sin metadata, sin de quién es.
   const snippets = (data ?? []).map((r: any) => scrubSnippet(r.content)).filter((s: string) => s.length > 15);
@@ -246,7 +249,7 @@ async function toolSearchChats(query: string, limit: any) {
   )).slice(0, 6);
   if (terms.length === 0) return { snippets: [], note: "Consulta demasiado genérica; usa palabras más concretas." };
   const orStr = terms.map((t) => `content.ilike."*${t}*"`).join(",");
-  const n = Math.min(Math.max(Number(limit) || 8, 1), 15);
+  const n = Math.min(Math.max(Number(limit) || 12, 1), 25);
   const { data, error } = await sb
     .from("messages_mentesana")
     .select("content")
@@ -341,16 +344,16 @@ export async function POST(req: NextRequest) {
 
   // Historial de conversación lo mantiene el cliente (sin persistencia, sin PII).
   const history: { role: string; content: string }[] = Array.isArray(body.history)
-    ? body.history.filter((m: any) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string").slice(-10)
+    ? body.history.filter((m: any) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string").slice(-16)
     : [];
 
   const messages: any[] = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: question }];
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": ANTHROPIC_KEY },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, system: SYSTEM, tools: TOOLS, messages }),
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 4000, system: SYSTEM, tools: TOOLS, messages }),
     });
     if (!r.ok) return NextResponse.json({ error: "claude_error", message: await r.text() }, { status: 500 });
     const data = await r.json();
@@ -367,7 +370,7 @@ export async function POST(req: NextRequest) {
         else if (tu.name === "search_sessions") result = await toolSearchSessions(String(tu.input?.query ?? ""), tu.input?.limit);
         else if (tu.name === "search_chats") result = await toolSearchChats(String(tu.input?.query ?? ""), tu.input?.limit);
         else result = { error: "unknown_tool" };
-        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 8000) });
+        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 60000) });
       }
       messages.push({ role: "user", content: toolResults });
       continue;
