@@ -13,7 +13,7 @@ const sb = createClient(process.env.NEXT_PUBLIC_BLOG_SUPABASE_URL!, process.env.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300; // Opus 4.8 + barrido amplio del corpus tarda; evita 504
 
 // Tamaño mínimo de grupo para mostrar un recuento (k-anonimato). Por debajo se suprime.
 const MIN_GROUP = 10;
@@ -349,7 +349,7 @@ export async function POST(req: NextRequest) {
 
   const messages: any[] = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: question }];
 
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 6; i++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": ANTHROPIC_KEY },
