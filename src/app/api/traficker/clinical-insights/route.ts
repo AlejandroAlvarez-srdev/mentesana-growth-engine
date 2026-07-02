@@ -178,7 +178,7 @@ const TOOLS = [
   {
     name: "search_sessions",
     description: "Busca por SIGNIFICADO en el corpus embebido de voz del paciente (notas clínicas, expectativas del diagnóstico, tareas terapéuticas y quejas) y devuelve muchos fragmentos ANÓNIMOS de lo que expresan, en sus propias palabras. Úsalo para frases, dolores recurrentes, cómo describen su problema, objeciones, quejas, etc. Sube el limit para barrer la mayoría del corpus. Los fragmentos vienen saneados (sin nombres, emails, teléfonos ni IDs). NUNCA incluye de quién es cada fragmento.",
-    input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 40, máx 100 — sube para leer la mayoría del corpus)." } }, required: ["query"] },
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Pregunta natural en español. Ej: 'cómo describen la ansiedad', 'qué dicen sobre dormir mal', 'frustración con terapias anteriores'." }, limit: { type: "number", description: "Nº de fragmentos (default 25, máx 60 — sube para barrer más corpus)." } }, required: ["query"] },
   },
   {
     name: "search_chats",
@@ -225,7 +225,7 @@ async function toolSearchSessions(query: string, limit: any) {
   const { voyageEmbed } = await import("@/lib/voyage-embed");
   const emb = await voyageEmbed(q, "query");
   if (!emb) return { error: "embedding_failed" };
-  const n = Math.min(Math.max(Number(limit) || 40, 1), 100);
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 60);
   // Barre la mayoría del corpus embebido de VOZ DEL PACIENTE: notas clínicas, expectativas
   // del diagnóstico, tareas y quejas. (Se dejan fuera meta_ad/video_brief/funnel: son material
   // interno de marketing, no voz del paciente.)
@@ -349,7 +349,7 @@ export async function POST(req: NextRequest) {
 
   const messages: any[] = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: question }];
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": ANTHROPIC_KEY },
@@ -370,7 +370,7 @@ export async function POST(req: NextRequest) {
         else if (tu.name === "search_sessions") result = await toolSearchSessions(String(tu.input?.query ?? ""), tu.input?.limit);
         else if (tu.name === "search_chats") result = await toolSearchChats(String(tu.input?.query ?? ""), tu.input?.limit);
         else result = { error: "unknown_tool" };
-        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 60000) });
+        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result).slice(0, 20000) });
       }
       messages.push({ role: "user", content: toolResults });
       continue;
