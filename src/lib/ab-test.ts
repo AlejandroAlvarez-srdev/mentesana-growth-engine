@@ -37,3 +37,26 @@ export function getVisitorId(): string {
     return id;
   } catch { return ""; }
 }
+
+/**
+ * Fuerza una variante desde la URL: `?ab=A` o `?ab=B`.
+ * Sticky por sesión: si el override viene por URL, lo guardamos en sessionStorage
+ * para que persista entre navegaciones internas (schedule → payment → etc.).
+ * Devuelve null si no hay override activo.
+ */
+export function getForcedVariant(): "A" | "B" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    // 1. Prioridad: query param en la URL actual
+    const p = new URLSearchParams(window.location.search);
+    const raw = (p.get("ab") || "").toUpperCase();
+    if (raw === "A" || raw === "B") {
+      sessionStorage.setItem("ms_ab_diagnostico_v2_forced", raw);
+      return raw as "A" | "B";
+    }
+    // 2. Sticky durante la sesión (útil tras redirects internos)
+    const cached = sessionStorage.getItem("ms_ab_diagnostico_v2_forced");
+    if (cached === "A" || cached === "B") return cached as "A" | "B";
+    return null;
+  } catch { return null; }
+}
