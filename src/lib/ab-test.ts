@@ -15,14 +15,32 @@ function hashString(s: string): number {
 }
 
 /**
+ * Tests a los que se les fuerza una variante ganadora tras cierre.
+ * 100% del tráfico recibe la variante indicada (sin split). Se preserva
+ * el flag `forced: true` en el evento variant_assigned para trazabilidad.
+ * Override por URL (?ab=A|B) sigue prevaleciendo — útil para QA.
+ */
+const FORCED_WINNERS: Record<string, "A" | "B"> = {
+  "diagnostico-v2": "B", // 2026-07-14: cierre del test, B declarada ganadora
+};
+
+/**
  * Retorna 'A' (control) o 'B' (variante) de forma determinista.
  * split=0.5 → 50/50. El mismo visitorId + testName siempre da el mismo resultado.
+ * Si el test está en FORCED_WINNERS, devuelve esa variante para todo el tráfico.
  */
 export function getVariant(testName: string, visitorId: string, split = 0.5): "A" | "B" {
+  const forced = FORCED_WINNERS[testName];
+  if (forced) return forced;
   if (!visitorId) return "A";
   const h = hashString(`${testName}:${visitorId}`);
   const r = (h % 1_000_000) / 1_000_000;
   return r < split ? "B" : "A";
+}
+
+/** Indica si el test tiene una variante forzada (útil para etiquetar analytics). */
+export function isForcedTest(testName: string): boolean {
+  return testName in FORCED_WINNERS;
 }
 
 /** Lee (o genera) el visitor_id del localStorage, compatible con lib/tracking.ts */
