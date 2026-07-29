@@ -46,15 +46,10 @@ export async function requireTraficker(req: NextRequest) {
   return { traficker: p };
 }
 
-// Helper dual: acepta cookie de agente admin O cookie de traficker O cookie de video-maker.
-// El video-maker (Dani) accede al chat de insights clínicos desde su propio panel
-// (/video-maker → tab Insights) para orientar campañas y guiones con la voz real del paciente.
-export async function requireTrafickerOrAdmin(req: NextRequest): Promise<{ email: string; name: string; kind: "traficker" | "agent" | "video_maker" } | NextResponse> {
+// Helper dual: acepta cookie de agente admin O cookie de traficker
+export async function requireTrafickerOrAdmin(req: NextRequest): Promise<{ email: string; name: string; kind: "traficker" | "agent" } | NextResponse> {
   const traf = await getTraficker(req);
   if (traf) return { email: traf.email, name: traf.name, kind: "traficker" };
-  const { getVideoMaker } = await import("@/lib/video-maker-auth");
-  const maker = await getVideoMaker(req);
-  if (maker) return { email: maker.email ?? "", name: maker.name ?? maker.email ?? "video-maker", kind: "video_maker" };
   const { getAgent } = await import("@/lib/agent-auth");
   const agent = await getAgent(req);
   if (agent && (agent.role === "admin" || agent.agent_type === "traficker")) {
