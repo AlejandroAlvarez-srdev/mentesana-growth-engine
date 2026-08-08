@@ -78,7 +78,7 @@ export default function CookieConsent() {
             <div className="mt-2.5 sm:mt-4 flex flex-row gap-2">
               <button
                 onClick={acceptAll}
-                className="flex-[2] rounded-full bg-[#6A178C] text-white text-xs sm:text-sm font-semibold py-2 sm:py-2.5 px-3 sm:px-4 hover:bg-[#581174] transition-colors"
+                className="flex-[2] rounded-full bg-[#E9D5F0] text-[#6A178C] text-xs sm:text-sm font-semibold py-2 sm:py-2.5 px-3 sm:px-4 hover:bg-[#DBBFE6] transition-colors"
               >
                 Aceptar todas
               </button>
