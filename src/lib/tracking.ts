@@ -16,7 +16,10 @@ import { META_STANDARD } from "@/lib/meta-events";
 type EventProps = Record<string, string | number | boolean>;
 
 // Generate or retrieve persistent visitor ID and per-tab session ID
-function getVisitorId(): string {
+// Se exportan porque el checkout los manda a Stripe: el webhook los devuelve al
+// escribir la compra y asi la fila de `purchase` se puede unir con el resto del
+// embudo. Sin esto la compra llega huerfana y no se puede medir test -> pago.
+export function getVisitorId(): string {
   if (typeof window === "undefined") return "";
   try {
     let id = localStorage.getItem("ms_visitor_id");
@@ -28,7 +31,7 @@ function getVisitorId(): string {
   } catch { return ""; }
 }
 
-function getSessionId(): string {
+export function getSessionId(): string {
   if (typeof window === "undefined") return "";
   try {
     let id = sessionStorage.getItem("ms_session_id");
@@ -180,7 +183,8 @@ const TIKTOK_STANDARD: Record<string, string> = {
   // Diagnostic funnel
   view_landing_diagnostico: "ViewContent",
   click_cta_empezar: "ClickButton",
-  start_matching: "InitiateCheckout",
+  start_matching: "ViewContent",
+  view_email_gate: "SubmitForm",
   view_match_result: "ViewContent",
   select_slot: "ClickButton",
   initiate_checkout: "InitiateCheckout",

@@ -4,8 +4,14 @@
 // pero el CAPI lo deja como custom, Meta NO deduplica → conversiones dobles o mal
 // atribuidas. Manteniendo un solo mapa, el event_name coincide en ambos lados y la
 // deduplicación por event_id funciona.
+// REGLA (25-ago): InitiateCheckout SOLO lo manda quien abre de verdad la
+// pasarela. Antes lo mandaban tambien `start_matching` y `test_started`, que es
+// empezar un cuestionario — Meta veia 522 InitiateCheckout a la semana cuando
+// reales habia ~147, y las campanas optimizaban hacia gente que empieza tests,
+// no hacia gente que paga. Si anades un evento aqui, comprueba que nadie mas
+// mapea al mismo estandar en otro punto del embudo.
 export const META_STANDARD: Record<string, string> = {
-  test_started: "InitiateCheckout",
+  test_started: "ViewContent",
   test_completed: "CompleteRegistration",
   match_viewed: "ViewContent",
   payment_started: "InitiateCheckout",
@@ -17,7 +23,9 @@ export const META_STANDARD: Record<string, string> = {
   // Embudo de diagnóstico
   view_landing_diagnostico: "ViewContent",
   click_cta_empezar: "AddToCart",
-  start_matching: "InitiateCheckout",
+  start_matching: "ViewContent",
+  // El momento con mas senal antes del pago: deja el correo. Es el Lead.
+  view_email_gate: "Lead",
   view_match_result: "ViewContent",
   select_slot: "Schedule",
   initiate_checkout: "InitiateCheckout",
