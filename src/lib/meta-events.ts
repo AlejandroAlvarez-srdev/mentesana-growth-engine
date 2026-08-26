@@ -37,5 +37,6 @@ export const META_STANDARD: Record<string, string> = {
   // Super embudo Llamada Inmediata (serviceId 300 · registro → app). El registro
   // deja el correo y crea la cuenta: ese es el Lead (misma lógica que view_email_gate).
   view_landing_llamada_inmediata: "ViewContent",
+  view_landing_llamada_gratis: "ViewContent",
   llamada_inmediata_registro: "Lead",
 };

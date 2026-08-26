@@ -195,6 +195,7 @@ const TIKTOK_STANDARD: Record<string, string> = {
   click_cta_eva: "ClickButton",
   // Super embudo Llamada Inmediata (registro → app)
   view_landing_llamada_inmediata: "ViewContent",
+  view_landing_llamada_gratis: "ViewContent",
   llamada_inmediata_registro: "CompleteRegistration",
 };
 
