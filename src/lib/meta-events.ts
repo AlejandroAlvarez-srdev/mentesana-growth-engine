@@ -34,4 +34,8 @@ export const META_STANDARD: Record<string, string> = {
   // Campaña Eva (influencer → diagnóstico)
   view_landing_eva: "ViewContent",
   click_cta_eva: "AddToCart",
+  // Super embudo Llamada Inmediata (serviceId 300 · registro → app). El registro
+  // deja el correo y crea la cuenta: ese es el Lead (misma lógica que view_email_gate).
+  view_landing_llamada_inmediata: "ViewContent",
+  llamada_inmediata_registro: "Lead",
 };

@@ -193,6 +193,9 @@ const TIKTOK_STANDARD: Record<string, string> = {
   // Campaña Eva
   view_landing_eva: "ViewContent",
   click_cta_eva: "ClickButton",
+  // Super embudo Llamada Inmediata (registro → app)
+  view_landing_llamada_inmediata: "ViewContent",
+  llamada_inmediata_registro: "CompleteRegistration",
 };
 
 interface FbqWindow extends Window {
