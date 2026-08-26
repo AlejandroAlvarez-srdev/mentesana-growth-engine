@@ -229,7 +229,7 @@ function abLandingVariant(): string | undefined {
   return m?.[1];
 }
 
-export function track(event: string, props: EventProps = {}): void {
+export function track(event: string, props: EventProps = {}, eventIdOverride?: string): void {
   if (typeof window === "undefined") return;
   const w = window as FbqWindow;
   const ab = abDiagVariant();
@@ -239,8 +239,10 @@ export function track(event: string, props: EventProps = {}): void {
   const abL = abLandingVariant();
   if (abL) props = { ...props, ab_landing: abL };
 
-  // Shared event_id — pixel + CAPI send it so Meta dedupes the pair.
-  const eventId = `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  // Shared event_id — pixel + CAPI send it so Meta dedupes the pair. Se puede
+  // pasar un override para deduplicar con un CAPI disparado desde el servidor
+  // (p.ej. la ruta de registro de Llamada Inmediata).
+  const eventId = eventIdOverride || `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
   // 0. Internal — Supabase analytics_events table (analítica propia, interés legítimo)
   sendInternal(event, props);
