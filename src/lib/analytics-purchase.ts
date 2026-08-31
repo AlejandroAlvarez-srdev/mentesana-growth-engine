@@ -23,6 +23,39 @@ export interface CompraAnalytics {
   metadata: Record<string, string | undefined>;
 }
 
+// Logger genérico de eventos server-side a `analytics_events` (mismo proyecto que
+// la compra). Se usa para payment_failed y cualquier otro evento que nazca en el
+// webhook de Stripe y no en el navegador.
+export async function registrarEventoEnAnalytics(
+  eventName: string,
+  c: CompraAnalytics & { extraProps?: Record<string, unknown> },
+): Promise<void> {
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\n/g, "").trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").replace(/\n/g, "").trim();
+  if (!url || !key) return;
+  const md = c.metadata ?? {};
+  const db = createClient(url, key, { auth: { persistSession: false } });
+  await db.from("analytics_events").insert({
+    event_name: eventName,
+    props: {
+      value: c.amountCents / 100,
+      currency: c.currency,
+      stripe_session_id: c.sessionId,
+      variante_precio: md.variante_precio ?? "estandar",
+      source: md.source ?? "",
+      origen: "stripe_webhook",
+      ...(c.extraProps ?? {}),
+    },
+    session_id: md.ms_session_id || null,
+    visitor_id: md.ms_visitor_id || null,
+    page_url: md.landing_url || null,
+    page_path: md.landing_page || null,
+    utm_source: md.utm_source || null,
+    utm_medium: md.utm_medium || null,
+    utm_campaign: md.utm_campaign || null,
+  });
+}
+
 export async function registrarCompraEnAnalytics(c: CompraAnalytics): Promise<void> {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\n/g, "").trim();
   const key = (
