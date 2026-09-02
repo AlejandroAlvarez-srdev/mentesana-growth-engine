@@ -76,6 +76,7 @@ export default function Sales999Tab() {
             {[7, 30, 90].map((d) => (
               <button key={d} onClick={() => setDays(d)} style={{ padding: "5px 12px", fontSize: 12, fontWeight: 800, borderRadius: 999, border: "none", cursor: "pointer", fontFamily: "inherit", background: days === d ? PURPLE : "#fff", color: days === d ? "#fff" : "#475569", boxShadow: days === d ? "none" : "inset 0 0 0 1px rgba(0,0,0,0.1)" }}>{d}d</button>
             ))}
+            <button onClick={() => { setMode("dia"); setDate(today); }} title="Ver cuántas van hoy" style={{ padding: "5px 12px", fontSize: 12, fontWeight: 800, borderRadius: 999, border: "none", cursor: "pointer", fontFamily: "inherit", background: "#fff", color: PURPLE, boxShadow: `inset 0 0 0 1.5px ${PURPLE}` }}>📅 Hoy</button>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
