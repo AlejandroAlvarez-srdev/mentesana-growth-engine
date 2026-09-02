@@ -11,7 +11,12 @@ import { useEffect, useMemo, useState } from "react";
 const PURPLE = "#6A178C";
 
 type Recent = { id: string; created: number; amount: number; email: string | null; utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; utm_term: string; landing: string };
-type Resp = { days: number; date?: string | null; count: number; revenue: number; recent: Recent[] };
+type SpendCamp = { campaign: string; spend: number; metaResults: number };
+type Resp = { days: number; date?: string | null; count: number; revenue: number; spendByCampaign?: SpendCamp[]; recent: Recent[] };
+
+// Normaliza nombres de campaña para casar utm_campaign (Stripe) con campaign_name (Meta):
+// minúsculas, sin acentos, sin caracteres no alfanuméricos.
+const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "");
 
 // Las 5 dimensiones de atribución con la etiqueta de negocio.
 const DIMS = [
@@ -65,6 +70,29 @@ export default function Sales999Tab() {
   const recentF = useMemo(() => all.filter((r) => activeFilters.every(([k, v]) => val(r, k) === v)), [all, activeFilters]);
   const paidCount = recentF.filter((r) => isPaid(r.utm_medium)).length;
   const orgCount = recentF.length - paidCount;
+
+  // CAC: gasto de Meta por campaña (mismo periodo) casado con utm_campaign por nombre normalizado.
+  const spendMap = useMemo(() => {
+    const m: Record<string, SpendCamp> = {};
+    for (const s of data?.spendByCampaign ?? []) m[norm(s.campaign)] = s;
+    return m;
+  }, [data]);
+  const cacFor = (campaignValue: string, count: number): { spend: number; cac: number | null } | null => {
+    const sp = spendMap[norm(campaignValue)];
+    if (!sp) return null;
+    return { spend: sp.spend, cac: count > 0 ? sp.spend / count : null };
+  };
+  // CAC medio del periodo sobre campañas casadas (usa TODAS las ventas, no el filtro).
+  const cacGlobal = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of all) { const c = (r.utm_campaign || "").trim(); if (c) counts[c] = (counts[c] || 0) + 1; }
+    let spend = 0, sales = 0, campaigns = 0, unmatched = 0;
+    for (const [c, cnt] of Object.entries(counts)) {
+      const sp = spendMap[norm(c)];
+      if (sp) { spend += sp.spend; sales += cnt; campaigns++; } else unmatched++;
+    }
+    return { spend: Math.round(spend * 100) / 100, sales, campaigns, unmatched, cac: sales > 0 ? spend / sales : null };
+  }, [all, spendMap]);
 
   // Buckets de una dimensión = datos filtrados por TODAS las OTRAS dimensiones (cross-filter),
   // así puedes re-elegir dentro de la misma dimensión sin vaciarla.
@@ -148,18 +176,28 @@ export default function Sales999Tab() {
                 <div style={{ width: `${recentF.length ? (orgCount / recentF.length) * 100 : 0}%`, background: "#0891b2" }} />
               </div>
             </div>
+            {/* CAC medio del periodo (campañas casadas con Meta) */}
+            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#fff", border: "1px solid rgba(0,0,0,0.06)" }} title="Gasto de Meta de campañas casadas ÷ ventas 9,99€ de esas campañas, en el periodo">
+              <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, color: "#888" }}>CAC medio (paid)</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: cacGlobal.cac != null ? PURPLE : "#c0c0c0", marginTop: 2 }}>{cacGlobal.cac != null ? `${cacGlobal.cac.toFixed(2)} €` : "—"}</div>
+              <div style={{ fontSize: 10, color: "#aaa", marginTop: 2 }}>
+                {cacGlobal.cac != null
+                  ? `${cacGlobal.campaigns} camp. · ${cacGlobal.spend.toLocaleString("es-ES")}€ gasto${cacGlobal.unmatched ? ` · ${cacGlobal.unmatched} sin casar` : ""}`
+                  : "Sin gasto casado con estas ventas"}
+              </div>
+            </div>
           </div>
 
           {/* Pipelines visuales por dimensión */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
             {DIMS.map((d) => (
-              <Pipeline key={d.key} dim={d} rows={bucketsFor(d.key)} active={filters[d.key] || ""} onPick={(v) => toggleF(d.key, v)} />
+              <Pipeline key={d.key} dim={d} rows={bucketsFor(d.key)} active={filters[d.key] || ""} onPick={(v) => toggleF(d.key, v)} cacFor={d.key === "utm_campaign" ? cacFor : undefined} />
             ))}
           </div>
 
-          {/* CAC (fase 2) */}
+          {/* Cómo se calcula el CAC */}
           <div style={{ fontSize: 11.5, color: "#94a3b8", padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px dashed rgba(0,0,0,0.1)" }}>
-            💡 <strong>CAC</strong> (coste por venta) llegará al cruzar el gasto de Meta con estas ventas por campaña — <em>fase 2</em>. Ya tenéis el volumen y la atribución por las 5 dimensiones.
+            💶 <strong>CAC</strong> = gasto de Meta de la campaña ÷ ventas 9,99€ de esa campaña (mismo periodo). Se casa por <em>nombre de campaña</em> = <code>utm_campaign</code>. Si una campaña sale <em>«sin gasto casado»</em>, revisa que el <code>utm_campaign</code> del anuncio coincida con el nombre en Meta. El gasto se toma del último sync de Meta.
           </div>
 
           {/* Feed */}
@@ -193,7 +231,7 @@ export default function Sales999Tab() {
 }
 
 // Un "pipeline" = barras embudo (desc) de una dimensión; click filtra.
-function Pipeline({ dim, rows, active, onPick }: { dim: (typeof DIMS)[number]; rows: { key: string; count: number; revenue: number; paid: boolean }[]; active: string; onPick: (v: string) => void }) {
+function Pipeline({ dim, rows, active, onPick, cacFor }: { dim: (typeof DIMS)[number]; rows: { key: string; count: number; revenue: number; paid: boolean }[]; active: string; onPick: (v: string) => void; cacFor?: (key: string, count: number) => { spend: number; cac: number | null } | null }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   const total = rows.reduce((a, r) => a + r.count, 0);
   return (
@@ -219,6 +257,16 @@ function Pipeline({ dim, rows, active, onPick }: { dim: (typeof DIMS)[number]; r
               <div style={{ height: 7, borderRadius: 4, background: "rgba(0,0,0,0.05)", overflow: "hidden" }}>
                 <div style={{ width: `${(r.count / max) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${barColor}, ${barColor}bb)`, borderRadius: 4 }} />
               </div>
+              {cacFor && (() => {
+                const info = cacFor(r.key, r.count);
+                if (!info) return <div style={{ fontSize: 9.5, color: "#c8c8c8", marginTop: 3 }}>sin gasto casado</div>;
+                return (
+                  <div style={{ fontSize: 9.5, color: "#888", marginTop: 3, display: "flex", gap: 8 }}>
+                    <span>💶 {info.spend.toLocaleString("es-ES")}€</span>
+                    {info.cac != null && <span style={{ fontWeight: 800, color: info.cac <= 10 ? "#16a34a" : info.cac <= 20 ? "#d97706" : "#dc2626" }}>CAC {info.cac.toFixed(2)}€</span>}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

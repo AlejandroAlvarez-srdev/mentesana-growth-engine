@@ -3,9 +3,12 @@
 // y con el email enmascarado (el traficker no necesita el email completo del paciente).
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
 import { requireTrafickerOrAdmin } from "@/lib/traficker-auth";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { httpClient: Stripe.createFetchHttpClient() });
+// Gasto de Meta (insights sincronizados) para el CAC por campaña.
+const blog = createClient(process.env.NEXT_PUBLIC_BLOG_SUPABASE_URL!, process.env.BLOG_SUPABASE_SERVICE_KEY!, { auth: { persistSession: false } });
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -122,6 +125,17 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 15);
 
+    // Gasto de Meta agregado por nombre de campaña en la MISMA ventana (para CAC = gasto / ventas).
+    // Se casa en el cliente con utm_campaign (que el equipo mapea = nombre de campaña de Meta).
+    const ymd = (sec: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date(sec * 1000));
+    const d1 = isDay ? dateParam! : ymd(since);
+    const d2 = isDay ? dateParam! : ymd(Math.floor(Date.now() / 1000));
+    let spendByCampaign: { campaign: string; spend: number; metaResults: number }[] = [];
+    try {
+      const { data: sp } = await blog.rpc("meta_spend_by_campaign", { d1, d2 });
+      spendByCampaign = (sp ?? []).map((r: { campaign: string; spend: number; meta_results: number }) => ({ campaign: String(r.campaign), spend: Number(r.spend) || 0, metaResults: Number(r.meta_results) || 0 }));
+    } catch { /* si falla el gasto, el panel sigue con volumen/atribución sin CAC */ }
+
     return NextResponse.json({
       days,
       date: isDay ? dateParam : null,
@@ -130,6 +144,7 @@ export async function GET(req: NextRequest) {
       bySource: sortBucket(bySource),
       byCampaign: sortBucket(byCampaign),
       byLanding: sortBucket(byLanding),
+      spendByCampaign,
       recent: recent.sort((a, b) => b.created - a.created).slice(0, 500),
     });
   } catch (e) {
