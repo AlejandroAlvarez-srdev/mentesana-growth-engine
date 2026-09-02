@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       map[k].revenue += amount;
     };
 
-    const recent: Array<{ id: string; created: number; amount: number; email: string | null; utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; landing: string }> = [];
+    const recent: Array<{ id: string; created: number; amount: number; email: string | null; utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; utm_term: string; landing: string }> = [];
     let totalRevenue = 0;
 
     for (const s of paid999) {
@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
         utm_medium: medium,
         utm_campaign: m.utm_campaign || "",
         utm_content: m.utm_content || "",
+        utm_term: m.utm_term || "",
         landing: m.landing_page || "",
       });
     }
@@ -129,7 +130,7 @@ export async function GET(req: NextRequest) {
       bySource: sortBucket(bySource),
       byCampaign: sortBucket(byCampaign),
       byLanding: sortBucket(byLanding),
-      recent: recent.sort((a, b) => b.created - a.created).slice(0, 60),
+      recent: recent.sort((a, b) => b.created - a.created).slice(0, 500),
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
