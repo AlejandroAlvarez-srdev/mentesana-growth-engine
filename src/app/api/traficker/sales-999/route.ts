@@ -33,28 +33,50 @@ function extractUtms(s: Stripe.Checkout.Session): Record<string, string> {
   return meta;
 }
 
+// Rango unix [inicio, fin) de un día concreto en hora de Madrid (maneja DST).
+function madridDayRangeUnix(dateStr: string): [number, number] {
+  const probe = new Date(`${dateStr}T00:00:00Z`);
+  const off = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Madrid", timeZoneName: "shortOffset" })
+    .formatToParts(probe).find((p) => p.type === "timeZoneName")?.value || "GMT+1";
+  const m = off.match(/GMT([+-]\d+)/);
+  const offH = m ? parseInt(m[1], 10) : 1;
+  const startMs = Date.parse(`${dateStr}T00:00:00Z`) - offH * 3600_000; // medianoche Madrid en UTC
+  const startS = Math.floor(startMs / 1000);
+  return [startS, startS + 86400];
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireTrafickerOrAdmin(req);
   if (auth instanceof NextResponse) return auth;
 
-  const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "30", 10) || 30, 1), 90);
-  const since = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+  // Día concreto (histórico) tiene prioridad sobre el rango de N días.
+  const dateParam = req.nextUrl.searchParams.get("date"); // YYYY-MM-DD (hora Madrid)
+  const isDay = !!dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam);
+  let since: number, until: number | null = null, days = 0;
+  if (isDay) {
+    [since, until] = madridDayRangeUnix(dateParam!);
+    days = 1;
+  } else {
+    days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "30", 10) || 30, 1), 90);
+    since = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+  }
 
   try {
     const sessions: Stripe.Checkout.Session[] = [];
     let starting_after: string | undefined;
-    for (let i = 0; i < 3; i++) {
-      const page = await stripe.checkout.sessions.list({ limit: 100, created: { gte: since }, starting_after });
+    for (let i = 0; i < 4; i++) {
+      const page = await stripe.checkout.sessions.list({ limit: 100, created: until ? { gte: since, lte: until } : { gte: since }, starting_after });
       sessions.push(...page.data);
       if (!page.has_more) break;
       starting_after = page.data[page.data.length - 1]?.id;
     }
 
-    // Solo pagadas Y del diagnóstico 9,99€
+    // Solo pagadas Y del diagnóstico 9,99€ (y dentro del día si aplica).
     const paid999 = sessions.filter((s) => {
       const okPaid = s.payment_status === "paid" || s.status === "complete";
       const amount = (s.amount_total || 0) / 100;
-      return okPaid && amount >= 9 && amount <= 10.5;
+      const inWindow = until ? s.created >= since && s.created < until : true;
+      return okPaid && inWindow && amount >= 9 && amount <= 10.5;
     });
 
     type Bucket = { count: number; revenue: number };
@@ -101,6 +123,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       days,
+      date: isDay ? dateParam : null,
       count: paid999.length,
       revenue: Math.round(totalRevenue * 100) / 100,
       bySource: sortBucket(bySource),
