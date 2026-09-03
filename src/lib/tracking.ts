@@ -280,6 +280,7 @@ export function track(event: string, props: EventProps = {}, eventIdOverride?: s
         ...props,
         event: metaEvent,                                   // trigger de GTM = nombre Meta
         meta_event: metaEvent,
+        ms_event: event,                                    // nombre interno (granularidad: varios → un mismo estándar)
         meta_event_type: META_STANDARD[event] ? "standard" : "custom",
         event_id: eventId,                                  // dedup con Pixel/CAPI
       });
