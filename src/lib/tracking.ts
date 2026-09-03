@@ -203,6 +203,7 @@ interface FbqWindow extends Window {
   fbq?: (...args: unknown[]) => void;
   ttq?: { track: (event: string, props?: unknown, opts?: { event_id?: string }) => void; page?: () => void };
   clarity?: (...args: unknown[]) => void;
+  dataLayer?: Record<string, unknown>[];
 }
 
 // Lee la variante del A/B test diag-vs-test de la cookie (la fija proxy.ts) para
@@ -258,16 +259,32 @@ export function track(event: string, props: EventProps = {}, eventIdOverride?: s
   try { vercelTrack(event, props); } catch {}
 
   // 2. Meta Pixel — eventID param enables deduplication with CAPI
+  const metaEvent = META_STANDARD[event] || event; // el MISMO nombre que recibe Meta
   try {
     if (w.fbq) {
-      const standard = META_STANDARD[event];
-      if (standard) {
-        w.fbq("track", standard, props, { eventID: eventId });
+      if (META_STANDARD[event]) {
+        w.fbq("track", metaEvent, props, { eventID: eventId });
       } else {
         w.fbq("trackCustom", event, props, { eventID: eventId });
       }
     }
   } catch {}
+
+  // 2b. Google Tag Manager — empujamos el MISMO evento de Meta al dataLayer para que
+  // los tags de GTM (GA4, Google Ads, etc.) puedan dispararse en paralelo. Mismo nombre
+  // que recibe Meta y mismo event_id (dedup). Marketing → requiere consentimiento.
+  if (hasConsent("marketing")) {
+    try {
+      w.dataLayer = w.dataLayer || [];
+      w.dataLayer.push({
+        ...props,
+        event: metaEvent,                                   // trigger de GTM = nombre Meta
+        meta_event: metaEvent,
+        meta_event_type: META_STANDARD[event] ? "standard" : "custom",
+        event_id: eventId,                                  // dedup con Pixel/CAPI
+      });
+    } catch {}
+  }
 
   // 3. TikTok Pixel
   try {
