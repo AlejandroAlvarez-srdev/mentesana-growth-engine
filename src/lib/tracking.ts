@@ -270,10 +270,13 @@ export function track(event: string, props: EventProps = {}, eventIdOverride?: s
     }
   } catch {}
 
-  // 2b. Google Tag Manager — empujamos el MISMO evento de Meta al dataLayer para que
-  // los tags de GTM (GA4, Google Ads, etc.) puedan dispararse en paralelo. Mismo nombre
-  // que recibe Meta y mismo event_id (dedup). Marketing → requiere consentimiento.
-  if (hasConsent("marketing")) {
+  // 2b. Google Tag Manager — empujamos el MISMO evento al dataLayer para que los tags de
+  // GTM (GA4, Google Ads, etc.) puedan dispararse. GTM se CARGA con consentimiento
+  // 'analytics' (ver TrackingScripts), así que alimentamos el dataLayer bajo la MISMA
+  // condición: antes iba gated por 'marketing' → GTM cargaba pero NO recibía eventos si el
+  // usuario no aceptaba también marketing. Los tags de marketing dentro de GTM (Google
+  // Ads/Pixel) deben respetar el consentimiento marketing por su lado (Consent Mode/trigger).
+  if (hasConsent("analytics")) {
     try {
       w.dataLayer = w.dataLayer || [];
       w.dataLayer.push({
