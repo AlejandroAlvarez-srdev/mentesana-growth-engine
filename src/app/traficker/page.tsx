@@ -207,7 +207,7 @@ export default function TrafickerDashboard() {
                   <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
                     <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
                     <Kpi label="📅 Gasto/día" value={dashboard.totals.spend_per_day ? `${dashboard.totals.spend_per_day.toFixed(1)}€` : "—"} color={PURPLE} />
-                    <Kpi label="🎯 Resultados" value={dashboard.totals.results} color="#16a34a" />
+                    <Kpi label="🎯 Conv. Meta (píxel)" value={dashboard.totals.results} color="#16a34a" />
                     <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
                     <Kpi label="💵 Revenue" value={`${(dashboard.totals.purchase_value ?? 0).toFixed(0)}€`} color="#0891b2" />
                     <Kpi label="🚀 ROAS" value={dashboard.totals.roas ? `${dashboard.totals.roas.toFixed(2)}x` : "—"} color={dashboard.totals.roas && dashboard.totals.roas >= 2 ? "#16a34a" : "#d97706"} />
@@ -613,12 +613,15 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
       {loading && <div style={{ padding: 20, color: "#888", textAlign: "center" }}>Cargando…</div>}
       {data && (
         <>
+          <div style={{ background: "#FEF9C3", border: "1px solid #FDE68A", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 11.5, color: "#854d0e", lineHeight: 1.45 }}>
+            ⚠️ <strong>&quot;Conv&quot; = conversiones que reporta el píxel de Meta</strong>, no ventas verificadas. Las ventas reales del test 9,99€ (cruzadas con Stripe) están en la pestaña <strong>Ventas 9,99€</strong>.
+          </div>
           {t && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 12 }}>
               <Tile label="Gasto" value={`${t.spend.toFixed(0)}€`} color={PURPLE} />
               <Tile label="Impresiones" value={t.impressions.toLocaleString("es-ES")} color="#475569" />
               <Tile label="CTR" value={`${t.ctr.toFixed(2)}%`} color={t.ctr >= 1.5 ? "#16a34a" : t.ctr >= 0.8 ? "#d97706" : "#dc2626"} />
-              <Tile label="Resultados" value={t.results} color="#16a34a" />
+              <Tile label="Conv. Meta (píxel)" value={t.results} color="#16a34a" />
               <Tile label="CPA" value={t.cpa !== null ? `${t.cpa.toFixed(2)}€` : "—"} color={t.cpa !== null && t.cpa < 10 ? "#16a34a" : t.cpa !== null && t.cpa < 25 ? "#d97706" : "#dc2626"} />
               <Tile label="ROAS" value={t.roas !== null ? `${t.roas.toFixed(2)}x` : "—"} color={t.roas !== null && t.roas >= 2 ? "#16a34a" : t.roas !== null && t.roas >= 1 ? "#d97706" : "#dc2626"} />
             </div>
@@ -628,7 +631,7 @@ function BreakdownDashboard({ accountId }: { accountId: string }) {
           ) : (
             <div style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)", overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px 60px 70px 70px 90px 40px", gap: 8, padding: "8px 12px", background: "rgba(106,23,140,0.06)", fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                <span>Campaña / Adset / Anuncio</span><span style={{ textAlign: "right" }}>Spend</span><span style={{ textAlign: "right" }}>CTR</span><span style={{ textAlign: "right" }}>Frec</span><span style={{ textAlign: "right" }}>Conv</span><span style={{ textAlign: "right" }}>CPA</span><span style={{ textAlign: "right" }}>ROAS</span><span />
+                <span>Campaña / Adset / Anuncio</span><span style={{ textAlign: "right" }}>Spend</span><span style={{ textAlign: "right" }}>CTR</span><span style={{ textAlign: "right" }}>Frec</span><span style={{ textAlign: "right" }} title="Conversiones del píxel de Meta, no ventas verificadas">Conv Meta</span><span style={{ textAlign: "right" }}>CPA</span><span style={{ textAlign: "right" }}>ROAS</span><span />
               </div>
               {data.campaigns.map(c => (
                 <div key={c.fb_campaign_id} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
