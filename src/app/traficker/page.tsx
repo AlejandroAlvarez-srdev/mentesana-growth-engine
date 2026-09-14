@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import MyTasks from "@/components/MyTasks";
 import NotificationBell from "@/components/NotificationBell";
 import PanelTabs, { usePanelTab } from "@/components/PanelTabs";
-import CreateCampaignModal from "./_components/CreateCampaignModal";
 import AdPreviewModalNew, { type AdPreviewData } from "./_components/AdPreviewModal";
 import DateRangePicker, { type DateRange, presetToRange } from "./_components/DateRangePicker";
 import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_components/MonthlyEvolutionChart";
-import BitacoraTab from "./_components/BitacoraTab";
 import AssignTaskModal from "./_components/AssignTaskModal";
 import ActiveAdsStrip from "./_components/ActiveAdsStrip";
 import ClinicalInsightsTab from "./_components/ClinicalInsightsTab";
@@ -33,7 +30,6 @@ export default function TrafickerDashboard() {
   const [diagResult, setDiagResult] = useState<{ steps: any[]; recommendation: string } | null>(null);
   const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = usePanelTab("resumen");
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [previewAdData, setPreviewAdData] = useState<AdPreviewData | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>(() => presetToRange("30d"));
   const [compareMode, setCompareMode] = useState(false);
@@ -162,7 +158,6 @@ export default function TrafickerDashboard() {
               <div style={{ flex: 1 }} />
               <a href="/agent/meta-auditor" style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${PURPLE}33`, background: "#fff", color: PURPLE, textDecoration: "none", fontFamily: "inherit" }}>🤖 Auditor</a>
               <button onClick={() => setShowAssignTask(true)} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}55`, fontWeight: 800 }}>➕ Asignar tarea</button>
-              <button onClick={() => setShowCreateModal(true)} style={btnPrimary}>+ Crear en Meta</button>
               <button onClick={connectMeta} style={{ ...btnSecondary, color: PURPLE, borderColor: `${PURPLE}33` }}>+ Cuenta</button>
             </>
           ) : (
@@ -189,18 +184,15 @@ export default function TrafickerDashboard() {
             onChange={setTab}
             tabs={[
               { key: "resumen", label: "Resumen", emoji: "📊" },
-              { key: "urgentes", label: "Urgentes", emoji: "🚨", badge: dashboard?.urgent_actions?.length },
               { key: "winners", label: "Ganadores", emoji: "🏆", badge: dashboard?.winners?.length },
               { key: "ads", label: "Todos los ads", emoji: "📋", badge: dashboard?.ads?.length },
               { key: "evolucion", label: "Evolución", emoji: "📈" },
-              { key: "bitacora", label: "Bitácora", emoji: "📓" },
               { key: "drilldown", label: "Drill-down", emoji: "🔬" },
               { key: "extras", label: "Extras", emoji: "💡" },
               { key: "brief", label: "Daily brief", emoji: "📨" },
               { key: "ventas999", label: "Ventas 9,99€", emoji: "🧾" },
               { key: "insights", label: "Insights clínicos", emoji: "🧠" },
               { key: "cuentas", label: "Cuentas", emoji: "⚙️", badge: accounts.length },
-              { key: "tareas", label: "Tareas", emoji: "📋" },
             ]}
           />
 
@@ -272,24 +264,6 @@ export default function TrafickerDashboard() {
           )}
 
           {/* ─── Urgentes ─── */}
-          {tab === "urgentes" && (
-            dashboard?.urgent_actions && dashboard.urgent_actions.length > 0 ? (
-              <section>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {dashboard.urgent_actions.map((u, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, background: "#fff", borderRadius: 10, borderLeft: `4px solid ${u.severity === "critical" ? "#dc2626" : "#d97706"}` }}>
-                      <div style={{ flex: 1 }}>
-                        <strong style={{ fontSize: 13, color: u.severity === "critical" ? "#991b1b" : "#92400e" }}>{u.action}</strong>
-                        <div style={{ fontSize: 11.5, color: "#666", marginTop: 2 }}>{u.ad_name}</div>
-                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{u.reason}</div>
-                      </div>
-                      {u.action.startsWith("Pausar") && (pausedIds.has(u.ad_id) ? <span style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#475569", background: "rgba(0,0,0,0.05)", borderRadius: 6 }}>⏸ PAUSADO</span> : <button onClick={() => actOn(u.ad_id, "pause")} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#fff", background: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer" }}>⏸ Pausar</button>)}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : <EmptyTab emoji="✅" title="Sin acciones urgentes" sub="Tu cuenta está sana. Bien hecho." />
-          )}
 
           {/* ─── Winners ─── */}
           {tab === "winners" && (
@@ -368,11 +342,7 @@ export default function TrafickerDashboard() {
           )}
 
           {/* ─── Bitácora ─── */}
-          {tab === "bitacora" && (
-            <BitacoraTab accountId={selectedAcc} fbAccountId={accounts.find(a => a.id === selectedAcc)?.fb_account_id ?? null} />
-          )}
-
-          {/* ─── Drill-down · Extras · Daily brief · Cuentas · Tareas ─── */}
+          {/* ─── Drill-down · Extras · Daily brief · Cuentas ─── */}
           {tab === "drilldown" && <BreakdownDashboard accountId={selectedAcc} />}
           {tab === "extras" && <ExtrasDashboard accountId={selectedAcc} />}
           {tab === "brief" && <DailyBrief accountId={selectedAcc} />}
@@ -399,20 +369,10 @@ export default function TrafickerDashboard() {
           {tab === "ventas999" && <Sales999Tab />}
 
           {tab === "insights" && <ClinicalInsightsTab />}
-
-          {tab === "tareas" && (
-            <>
-              <div style={{ marginBottom: 12 }}>
-                <a href="/traficker/board" style={{ display: "inline-block", padding: "8px 14px", background: "linear-gradient(135deg, #6A178C, #8B2FB5)", color: "#fff", textDecoration: "none", borderRadius: 8, fontSize: 12, fontWeight: 800 }}>📋 Abrir mi Kanban →</a>
-              </div>
-              <MyTasks api="/api/traficker/tasks" />
-            </>
-          )}
         </>
       )}
 
       {showTokenModal && <TokenConnectModal onClose={() => setShowTokenModal(false)} onDone={() => { setShowTokenModal(false); loadAccounts(); }} />}
-      {showCreateModal && <CreateCampaignModal accountId={selectedAcc} accounts={accounts.map(a => ({ id: a.id, fb_account_id: a.fb_account_id, name: a.name, currency: a.currency }))} onClose={() => setShowCreateModal(false)} />}
       <AdPreviewModalNew open={!!previewAdData} ad={previewAdData} onClose={() => setPreviewAdData(null)} />
       {showAssignTask && <AssignTaskModal onClose={() => setShowAssignTask(false)} onAssigned={() => alert("✓ Tarea asignada — el destinatario recibirá email + notificación en su panel")} />}
       {/* Unused — DateRangePicker disponible para filtros futuros */}
