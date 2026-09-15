@@ -12,7 +12,9 @@ const PURPLE = "#6A178C";
 
 type Recent = { id: string; created: number; amount: number; email: string | null; utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; utm_term: string; landing: string };
 type SpendCamp = { campaign: string; spend: number; metaResults: number };
-type Resp = { days: number; date?: string | null; count: number; revenue: number; spendByCampaign?: SpendCamp[]; recent: Recent[] };
+type Daily = { date: string; sales: number; revenue: number; spend: number; cac: number | null };
+type Ltv = { buyers: number; matched: number; total_value: number; avg_value: number };
+type Resp = { days: number; date?: string | null; count: number; revenue: number; spendByCampaign?: SpendCamp[]; daily?: Daily[]; ltv?: Ltv | null; recent: Recent[] };
 
 // Normaliza nombres de campaña para casar utm_campaign (Stripe) con campaign_name (Meta):
 // minúsculas, sin acentos, sin caracteres no alfanuméricos.
@@ -186,7 +188,22 @@ export default function Sales999Tab() {
                   : "Sin gasto casado con estas ventas"}
               </div>
             </div>
+            {/* LTV — valor medio del cliente que entra por el 9,99€ */}
+            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#fff", border: "1px solid rgba(0,0,0,0.06)" }} title="Valor medio total (suma de todos sus pagos) de los clientes que entraron por el 9,99€ en este periodo. Aproximado: cruce por email con la tabla de pagos.">
+              <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, color: "#888" }}>Valor medio cliente (LTV)</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: data.ltv && data.ltv.avg_value > 0 ? "#065f46" : "#c0c0c0", marginTop: 2 }}>
+                {data.ltv && data.ltv.avg_value > 0 ? `${data.ltv.avg_value.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "—"}
+              </div>
+              <div style={{ fontSize: 10, color: "#aaa", marginTop: 2 }}>
+                {data.ltv && data.ltv.avg_value > 0
+                  ? `×${(data.ltv.avg_value / 9.99).toFixed(1)} sobre el 9,99€ · ${data.ltv.matched}/${data.ltv.buyers} casados (aprox.)`
+                  : "Sin datos de valor"}
+              </div>
+            </div>
           </div>
+
+          {/* Evolución diaria: inversión · ventas · CAC */}
+          {mode === "rango" && data.daily && data.daily.length > 1 && <DailyChart daily={data.daily} />}
 
           {/* Pipelines visuales por dimensión */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
@@ -226,6 +243,41 @@ export default function Sales999Tab() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+// Gráfico de barras diario: inversión (Meta) + ventas 9,99€ agrupadas por día,
+// con el CAC bajo cada columna. Scroll horizontal para 30/90 días.
+function DailyChart({ daily }: { daily: Daily[] }) {
+  const maxSpend = Math.max(1, ...daily.map((d) => d.spend));
+  const maxSales = Math.max(1, ...daily.map((d) => d.sales));
+  const totSpend = daily.reduce((a, d) => a + d.spend, 0);
+  const totSales = daily.reduce((a, d) => a + d.sales, 0);
+  const H = 92;
+  const short = (d: string) => { const [, m, dd] = d.split("-"); return `${Number(dd)}/${Number(m)}`; };
+  const cacColor = (c: number | null) => (c == null ? "#c8c8c8" : c <= 10 ? "#16a34a" : c <= 20 ? "#d97706" : "#dc2626");
+  return (
+    <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13, color: "#1a1a2e" }}>📈 Evolución diaria</strong>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#475569" }}><i style={{ width: 10, height: 10, borderRadius: 2, background: PURPLE, display: "inline-block" }} /> Inversión</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#475569" }}><i style={{ width: 10, height: 10, borderRadius: 2, background: "#16a34a", display: "inline-block" }} /> Ventas</span>
+        <span style={{ fontSize: 11, color: "#94a3b8" }}>· CAC = cifra bajo cada día</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "#94a3b8" }}>{totSpend.toLocaleString("es-ES", { maximumFractionDigits: 0 })}€ · {totSales} ventas</span>
+      </div>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, alignItems: "flex-end" }}>
+        {daily.map((d) => (
+          <div key={d.date} title={`${d.date} · ${d.spend.toLocaleString("es-ES")}€ inversión · ${d.sales} ventas · CAC ${d.cac != null ? d.cac.toFixed(2) + "€" : "—"}`} style={{ flex: "0 0 auto", width: 34, textAlign: "center" }}>
+            <div style={{ height: H, display: "flex", gap: 2, alignItems: "flex-end", justifyContent: "center" }}>
+              <div style={{ width: 11, height: `${Math.max(d.spend > 0 ? 4 : 0, (d.spend / maxSpend) * H)}px`, background: PURPLE, borderRadius: "3px 3px 0 0" }} />
+              <div style={{ width: 11, height: `${Math.max(d.sales > 0 ? 4 : 0, (d.sales / maxSales) * H)}px`, background: "#16a34a", borderRadius: "3px 3px 0 0" }} />
+            </div>
+            <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 3 }}>{short(d.date)}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: cacColor(d.cac) }}>{d.cac != null ? `${d.cac.toFixed(0)}€` : "·"}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

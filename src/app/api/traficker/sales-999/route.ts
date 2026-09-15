@@ -48,6 +48,12 @@ function madridDayRangeUnix(dateStr: string): [number, number] {
   return [startS, startS + 86400];
 }
 
+// Suma 1 día a 'YYYY-MM-DD' (para generar la serie diaria).
+function addDayStr(d: string): string {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, day + 1, 12)));
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireTrafickerOrAdmin(req);
   if (auth instanceof NextResponse) return auth;
@@ -136,6 +142,48 @@ export async function GET(req: NextRequest) {
       spendByCampaign = (sp ?? []).map((r: { campaign: string; spend: number; meta_results: number }) => ({ campaign: String(r.campaign), spend: Number(r.spend) || 0, metaResults: Number(r.meta_results) || 0 }));
     } catch { /* si falla el gasto, el panel sigue con volumen/atribución sin CAC */ }
 
+    // ─── SERIE DIARIA: inversión · ventas · CAC por día (para el gráfico de barras) ───
+    const salesByDay: Record<string, { sales: number; revenue: number }> = {};
+    for (const s of paid999) {
+      const d = ymd(s.created);
+      (salesByDay[d] ??= { sales: 0, revenue: 0 });
+      salesByDay[d].sales++;
+      salesByDay[d].revenue += (s.amount_total || 0) / 100;
+    }
+    const spendByDay: Record<string, number> = {};
+    try {
+      const { data: sd } = await blog.rpc("meta_spend_by_day", { d1, d2 });
+      for (const r of (sd ?? []) as { day: string; spend: number }[]) spendByDay[String(r.day)] = Number(r.spend) || 0;
+    } catch { /* sin gasto diario → el gráfico muestra ventas sin CAC */ }
+    const daily: Array<{ date: string; sales: number; revenue: number; spend: number; cac: number | null }> = [];
+    for (let d = d1, guard = 0; d <= d2 && guard < 400; d = addDayStr(d), guard++) {
+      const sv = salesByDay[d] ?? { sales: 0, revenue: 0 };
+      const spend = spendByDay[d] ?? 0;
+      daily.push({
+        date: d, sales: sv.sales, revenue: Math.round(sv.revenue * 100) / 100,
+        spend: Math.round(spend * 100) / 100,
+        cac: sv.sales > 0 && spend > 0 ? Math.round((spend / sv.sales) * 100) / 100 : null,
+      });
+    }
+
+    // ─── LTV: valor medio del cliente que entra por el 9,99€ (aprox., cruce por email) ───
+    const buyerEmails = [...new Set(paid999.map((s) => (s.customer_details?.email || s.customer_email || "").trim().toLowerCase()).filter(Boolean))];
+    let ltv: { buyers: number; matched: number; total_value: number; avg_value: number } | null = null;
+    if (buyerEmails.length) {
+      let totalCents = 0;
+      const matchedEmails = new Set<string>();
+      for (let i = 0; i < buyerEmails.length; i += 80) {
+        const chunk = buyerEmails.slice(i, i + 80);
+        const { data: pays } = await blog.from("payments").select("patient_email, amount_cents").in("patient_email", chunk).eq("status", "completed");
+        for (const p of (pays ?? []) as { patient_email: string | null; amount_cents: number | null }[]) {
+          totalCents += Number(p.amount_cents || 0);
+          if (p.patient_email) matchedEmails.add(String(p.patient_email).toLowerCase());
+        }
+      }
+      const matched = matchedEmails.size;
+      ltv = { buyers: buyerEmails.length, matched, total_value: Math.round(totalCents / 100), avg_value: matched > 0 ? Math.round((totalCents / 100 / matched) * 100) / 100 : 0 };
+    }
+
     return NextResponse.json({
       days,
       date: isDay ? dateParam : null,
@@ -145,6 +193,8 @@ export async function GET(req: NextRequest) {
       byCampaign: sortBucket(byCampaign),
       byLanding: sortBucket(byLanding),
       spendByCampaign,
+      daily,
+      ltv,
       recent: recent.sort((a, b) => b.created - a.created).slice(0, 500),
     });
   } catch (e) {

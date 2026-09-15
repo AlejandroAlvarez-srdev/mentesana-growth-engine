@@ -10,18 +10,34 @@ import AssignTaskModal from "./_components/AssignTaskModal";
 import ActiveAdsStrip from "./_components/ActiveAdsStrip";
 import ClinicalInsightsTab from "./_components/ClinicalInsightsTab";
 import Sales999Tab from "./_components/Sales999Tab";
+import { clasificarCampana, EMBUDO_LABEL, type Embudo } from "@/lib/meta-embudos";
 
 const PURPLE = "#6A178C";
 
+// Agrupa los ganadores por EMBUDO (según la nomenclatura de campaña). La agencia
+// pidió verlos diferenciados por embudo; la plataforma (IG/FB) requiere el desglose
+// por publisher_platform en el sync de Meta (pendiente).
+const EMBUDO_ORDER: Embudo[] = ["999", "directo", "cg", "li", "otros", "desconocido"];
+function groupWinnersByEmbudo(winners: Winner[]): { embudo: Embudo; label: string; items: Winner[] }[] {
+  const map = new Map<Embudo, Winner[]>();
+  for (const w of winners) {
+    const e = clasificarCampana(w.campaign_name).embudo;
+    if (!map.has(e)) map.set(e, []);
+    map.get(e)!.push(w);
+  }
+  return EMBUDO_ORDER.filter((e) => map.has(e)).map((e) => ({ embudo: e, label: EMBUDO_LABEL[e], items: map.get(e)! }));
+}
+
 type Account = { id: string; fb_account_id: string; name: string; currency: string | null; business_name: string | null; last_synced_at: string | null };
 type AdRow = { fb_ad_id: string; ad_name: string; campaign_name: string; adset_name?: string | null; creative_thumbnail?: string | null; title?: string | null; body?: string | null; cta?: string | null; link_url?: string | null; preview_shareable_link?: string | null; impressions: number; clicks: number; spend: number; ctr: number; frequency: number; thumbstop_rate: number; hook_rate?: number | null; video_avg_watch_sec?: number | null; results: number; cost_per_result: number | null; roas: number | null; effective_status?: string };
-type Winner = AdRow & { score: number; reasons: string[] };
+type Winner = AdRow & { score: number; reasons: string[]; days?: number };
 type UrgentAction = { ad_id: string; ad_name: string; action: string; severity: "critical" | "warning"; reason: string };
 
 export default function TrafickerDashboard() {
   const [me, setMe] = useState<{ name: string; email: string; via_admin?: boolean } | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAcc, setSelectedAcc] = useState<string>("");
+  const [dashDays, setDashDays] = useState(30); // ventana del resumen/dashboard (7/30/90d)
   const [dashboard, setDashboard] = useState<{ totals: any; ads: AdRow[]; winners: Winner[]; urgent_actions: UrgentAction[] } | null>(null);
   const [loadingDash, setLoadingDash] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -44,9 +60,10 @@ export default function TrafickerDashboard() {
   }
 
   const loadAccounts = () => fetch("/api/agent/meta/accounts", { credentials: "include" }).then(r => r.json()).then(d => setAccounts(d.accounts ?? []));
-  const loadDash = (accId: string, silent = false) => {
+  const loadDash = (accId: string, silent = false, daysOverride?: number) => {
     if (!silent) setLoadingDash(true);
-    const url = accId ? `/api/agent/meta/dashboard?account_id=${accId}` : "/api/agent/meta/dashboard";
+    const dd = daysOverride ?? dashDays;
+    const url = `/api/agent/meta/dashboard?days=${dd}${accId ? `&account_id=${accId}` : ""}`;
     fetch(url, { credentials: "include" }).then(r => r.json()).then(d => setDashboard(d)).finally(() => { if (!silent) setLoadingDash(false); });
   };
 
@@ -199,13 +216,23 @@ export default function TrafickerDashboard() {
           {/* ─── Resumen: KPIs + top winners + urgentes preview ─── */}
           {tab === "resumen" && (
             <>
+              {/* Selector de periodo del resumen (7/30/90 días) */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Resumen de:</span>
+                <div style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: "#f1f5f9", gap: 2 }}>
+                  {[7, 30, 90].map((d) => (
+                    <button key={d} onClick={() => { setDashDays(d); loadDash(selectedAcc, false, d); }} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, borderRadius: 7, border: "none", background: dashDays === d ? "#fff" : "transparent", color: dashDays === d ? PURPLE : "#475569", boxShadow: dashDays === d ? "0 1px 3px rgba(0,0,0,0.08)" : "none", cursor: "pointer", fontFamily: "inherit" }}>Últimos {d}d</button>
+                  ))}
+                </div>
+                {loadingDash && <span style={{ fontSize: 11, color: "#94a3b8" }}>actualizando…</span>}
+              </div>
               <ActiveAdsStrip accountId={selectedAcc} />
               {dashboard?.totals && (
                 <>
                   {/* Bloque 1 — Inversión y resultados */}
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>💼 Inversión y resultados</div>
                   <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
-                    <Kpi label="💰 Gasto 30d" value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
+                    <Kpi label={`💰 Gasto ${dashDays}d`} value={`${dashboard.totals.spend.toFixed(0)}€`} color={PURPLE} />
                     <Kpi label="📅 Gasto/día" value={dashboard.totals.spend_per_day ? `${dashboard.totals.spend_per_day.toFixed(1)}€` : "—"} color={PURPLE} />
                     <Kpi label="🎯 Conv. Meta (píxel)" value={dashboard.totals.results} color="#16a34a" />
                     <Kpi label="📉 CPA" value={dashboard.totals.cpa ? `${dashboard.totals.cpa.toFixed(2)}€` : "—"} color={dashboard.totals.cpa && dashboard.totals.cpa < 10 ? "#16a34a" : "#d97706"} />
@@ -269,28 +296,40 @@ export default function TrafickerDashboard() {
           {tab === "winners" && (
             dashboard?.winners && dashboard.winners.length > 0 ? (
               <section>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {dashboard.winners.map(w => (
-                    <div key={w.fb_ad_id} style={{ padding: 12, background: "#fff", borderRadius: 10, border: `2px solid ${PURPLE}33` }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                        <strong style={{ fontSize: 13 }}>{w.ad_name}</strong>
-                        <span style={{ padding: "2px 8px", background: PURPLE, color: "#fff", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>SCORE {w.score}</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{w.campaign_name}</div>
-                      <div style={{ display: "flex", gap: 10, fontSize: 11, marginTop: 6, flexWrap: "wrap", color: "#475569" }}>
-                        <span>💰 {w.spend.toFixed(0)}€</span>
-                        <span>🖱 CTR {w.ctr.toFixed(2)}%</span>
-                        <span>👁 Thumbstop {w.thumbstop_rate.toFixed(1)}%</span>
-                        <span>📊 Frec {w.frequency.toFixed(2)}</span>
-                        {w.cost_per_result && <span>💵 CPA {w.cost_per_result.toFixed(2)}€</span>}
-                        {w.roas && <span>🚀 ROAS {w.roas.toFixed(2)}x</span>}
-                      </div>
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-                        {w.reasons.map((r, i) => <span key={i} style={{ fontSize: 10.5, padding: "2px 6px", background: "rgba(16,185,129,0.14)", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>✓ {r}</span>)}
-                      </div>
-                    </div>
-                  ))}
+                <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 10, background: "#f8fafc", border: "1px dashed rgba(0,0,0,0.1)", borderRadius: 8, padding: "8px 12px" }}>
+                  🏆 Ganadores <strong>agrupados por embudo</strong> (según la nomenclatura de la campaña). La <strong>plataforma</strong> (IG/FB) aún no se separa: requiere activar el desglose por <code>publisher_platform</code> en el sync de Meta.
                 </div>
+                {groupWinnersByEmbudo(dashboard.winners).map(g => (
+                  <div key={g.embudo} style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 8px" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: PURPLE }}>🔻 {g.label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", background: "rgba(106,23,140,0.06)", padding: "2px 8px", borderRadius: 999 }}>{g.items.length}</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {g.items.map(w => (
+                        <div key={w.fb_ad_id} style={{ padding: 12, background: "#fff", borderRadius: 10, border: `2px solid ${PURPLE}33` }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: 13 }}>{w.ad_name}</strong>
+                            <span style={{ padding: "2px 8px", background: PURPLE, color: "#fff", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>SCORE {w.score}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{w.campaign_name}</div>
+                          <div style={{ display: "flex", gap: 10, fontSize: 11, marginTop: 6, flexWrap: "wrap", color: "#475569" }}>
+                            {typeof w.days === "number" && <span title="Días con datos (proxy de días en circulación)">📆 {w.days}d</span>}
+                            <span>💰 {w.spend.toFixed(0)}€</span>
+                            <span>🖱 CTR {w.ctr.toFixed(2)}%</span>
+                            <span>👁 Thumbstop {w.thumbstop_rate.toFixed(1)}%</span>
+                            <span>📊 Frec {w.frequency.toFixed(2)}</span>
+                            {w.cost_per_result && <span>💵 CPA {w.cost_per_result.toFixed(2)}€</span>}
+                            {w.roas && <span>🚀 ROAS {w.roas.toFixed(2)}x</span>}
+                          </div>
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                            {w.reasons.map((r, i) => <span key={i} style={{ fontSize: 10.5, padding: "2px 6px", background: "rgba(16,185,129,0.14)", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>✓ {r}</span>)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </section>
             ) : <EmptyTab emoji="🏆" title="Sin ganadores aún" sub="Cuando un ad rinda bien, aparecerá aquí con su score." />
           )}
