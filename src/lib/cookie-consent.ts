@@ -38,6 +38,9 @@ export function writeConsent(categories: Omit<ConsentCategories, "necessary">) {
     ts: new Date().toISOString(),
   };
   localStorage.setItem(CONSENT_KEY, JSON.stringify(record));
+  // Consent Mode v2 (Google): actualiza las señales a granted/denied según la
+  // decisión. Import dinámico para no acoplar en SSR. Ver src/lib/consent-mode.ts.
+  import("./consent-mode").then((m) => m.updateConsentMode(record.categories.analytics, record.categories.marketing)).catch(() => {});
   window.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: record }));
 }
 

@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useEffect, useState } from "react";
 import { CONSENT_EVENT, readConsent, type ConsentRecord } from "@/lib/cookie-consent";
+import { CONSENT_DEFAULT_JS } from "@/lib/consent-mode";
 
 // Carga condicional de scripts de tracking según consentimiento RGPD/AEPD.
 // - Hasta que el usuario decide, NO se inyecta nada (ni GTM, ni Pixel, ni TikTok, ni Clarity).
@@ -28,6 +29,12 @@ export default function TrackingScripts() {
 
   return (
     <>
+      {/* Consent Mode v2 (Google): default DENIED para todos, ANTES de cargar GTM.
+          Se ejecuta siempre; el update a granted/denied lo dispara writeConsent()
+          cuando el usuario decide en el banner. Additivo: no carga tags por sí solo. */}
+      <Script id="ms-consent-default" strategy="afterInteractive">
+        {CONSENT_DEFAULT_JS}
+      </Script>
       {analytics && (
         <Script id="gtm" strategy="lazyOnload">
           {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-N3PMGZP');`}
