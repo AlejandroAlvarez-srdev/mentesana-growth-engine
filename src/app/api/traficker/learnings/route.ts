@@ -22,6 +22,33 @@ export const maxDuration = 90;
 const CACHE_ID = "eur_999";
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r0 = (n: number) => Math.round(n);
+
+// Parseo tolerante del JSON de Claude: quita fences y comas colgantes, y si viene
+// truncado autocierra los brackets/braces abiertos (fuera de strings) para rescatar
+// todo lo posible en vez de perder el informe entero por un carácter.
+function safeParseAiJson(text: string): Record<string, unknown> {
+  let s = (text ?? "").trim().replace(/^```(?:json)?/i, "").replace(/```\s*$/i, "").trim();
+  const start = s.indexOf("{");
+  if (start < 0) return { eras: [], playbook: null, error: "no_json" };
+  s = s.slice(start);
+  const stripCommas = (x: string) => x.replace(/,(\s*[}\]])/g, "$1");
+  const autoClose = (x: string) => {
+    const stack: string[] = []; let inStr = false, esc = false;
+    for (const ch of x) {
+      if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === "{" || ch === "[") stack.push(ch);
+      else if (ch === "}" || ch === "]") stack.pop();
+    }
+    let out = x; if (inStr) out += '"';
+    for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === "{" ? "}" : "]";
+    return out;
+  };
+  for (const cand of [s, stripCommas(s), stripCommas(autoClose(s)), stripCommas(autoClose(s.replace(/,\s*$/, "")))]) {
+    try { return JSON.parse(cand); } catch { /* siguiente */ }
+  }
+  return { eras: [], playbook: null, error: "parse", raw_tail: s.slice(-200) };
+}
 const DOW = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 type Daily = { d: string; spend: number; conv: number; spend_blind: number; conv_trusted: number };
@@ -295,20 +322,21 @@ Responde SOLO JSON válido:
     "creativos": ["hit rate + vida útil: cada cuánto refrescar, qué dura — con cifras"],
     "arreglar_ya": ["fixes de tracking/infra"] }
 }
-Un elemento por era con el MISMO label. 2-4 bullets por lista. Las claves y conclusiones deben ser AFIRMACIONES tajantes con números, no genéricas.`;
+Un elemento por era con el MISMO label. 2-4 bullets por lista. Las claves y conclusiones deben ser AFIRMACIONES tajantes con números, no genéricas.
+
+CRÍTICO de FORMATO: devuelve JSON 100% válido. Dentro de los valores de texto NO uses comillas dobles (") — si necesitas citar un nombre de anuncio o ángulo usa comillas simples ('VOLVER'). No pongas comas colgantes. No añadas texto fuera del JSON.`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
-          model: "claude-opus-4-7", max_tokens: 5000, system,
+          model: "claude-opus-4-7", max_tokens: 8000, system,
           messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ global: globalMeta, eras })}` }],
         }),
       });
       const j = await res.json();
       const text: string = j?.content?.[0]?.text ?? "";
-      const match = text.match(/\{[\s\S]*\}/);
-      ai = match ? JSON.parse(match[0]) : { eras: [], playbook: null, error: "parse" };
+      ai = safeParseAiJson(text);
     } catch (e) {
       ai = { eras: [], playbook: null, error: e instanceof Error ? e.message : "llm_error" };
     }
