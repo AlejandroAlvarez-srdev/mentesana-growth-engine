@@ -12,6 +12,7 @@ import ClinicalInsightsTab from "./_components/ClinicalInsightsTab";
 import Sales999Tab from "./_components/Sales999Tab";
 import CampaignAITab from "./_components/CampaignAITab";
 import AprendizajesTab from "./_components/AprendizajesTab";
+import EficaciaTab from "./_components/EficaciaTab";
 import { clasificarCampana, EMBUDO_LABEL, type Embudo } from "@/lib/meta-embudos";
 
 const PURPLE = "#6A178C";
@@ -210,6 +211,7 @@ export default function TrafickerDashboard() {
               { key: "extras", label: "Extras", emoji: "💡" },
               { key: "brief", label: "Daily brief", emoji: "📨" },
               { key: "ventas999", label: "Ventas 9,99€", emoji: "🧾" },
+              { key: "eficacia", label: "Eficacia lead", emoji: "🎯" },
               { key: "campaign_ai", label: "IA campañas", emoji: "🤖" },
               { key: "aprendizajes", label: "Aprendizajes", emoji: "🧭" },
               { key: "insights", label: "Insights clínicos", emoji: "🧠" },
@@ -414,6 +416,8 @@ export default function TrafickerDashboard() {
           {tab === "campaign_ai" && <CampaignAITab accountId={selectedAcc} />}
 
           {tab === "aprendizajes" && <AprendizajesTab />}
+
+          {tab === "eficacia" && <EficaciaTab />}
 
           {tab === "insights" && <ClinicalInsightsTab />}
         </>

@@ -1,12 +1,13 @@
 // Aprendizajes del traficker — memoria institucional del embudo 9,99€ (EUR).
 //
-// El problema: los trafickers rotaban ("morían todos") y su conocimiento se
-// perdía. Esta ruta reconstruye, desde los datos reales de Meta, las "eras"
-// de cada traficker (auto-detectadas por rupturas de CPA mes a mes, SIN nombres
-// → Traficker 1/2/3…) y sintetiza con IA qué hizo cada uno: qué funcionó, qué
-// disparó el CAC y qué debe copiar/evitar el siguiente. Todo se cachea para no
-// llamar a Claude en cada carga. Además hay una KB editable (traficker_learnings)
-// que sobrevive a la rotación.
+// Los trafickers rotaban ("morían todos") y su conocimiento se perdía. Esta ruta
+// reconstruye desde los datos reales de Meta (histórico completo backfilleado
+// nov-2025 →) las "eras" de cada traficker (auto-detectadas por rupturas de CPA),
+// las ATRIBUYE a la persona real que operó la cuenta (actor del activity log del
+// Graph API) y sintetiza con IA TODO el conocimiento accionable: qué funcionó,
+// qué disparó el CAC, rendimiento por día de la semana / fin de semana, días
+// relevantes, cadencia de lanzamiento, hit rate y vida útil de los creativos.
+// Se cachea para no llamar a Claude en cada carga. + KB manual que sobrevive.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
@@ -16,11 +17,12 @@ import { anguloDeCampana, validarNombreCampana } from "@/lib/meta-embudos";
 const sb = createClient(process.env.NEXT_PUBLIC_BLOG_SUPABASE_URL!, process.env.BLOG_SUPABASE_SERVICE_KEY!, { auth: { persistSession: false } });
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const CACHE_ID = "eur_999";
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r0 = (n: number) => Math.round(n);
+const DOW = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 type Daily = { d: string; spend: number; conv: number; spend_blind: number; conv_trusted: number };
 type AdRow = {
@@ -28,9 +30,11 @@ type AdRow = {
   spend: number; conv: number; impressions: number; clicks: number;
   ctr: number | null; thumbstop: number | null; freq: number | null; preview: string | null;
 };
+type AdLife = { ad_name: string; campaign_name: string | null; first_day: string; last_day: string; active_days: number; spend: number; conv: number; impressions: number; max_freq: number | null };
+type ActorRow = { account_id: string; actor_name: string; month: string; actions: number; traf_actions: number; is_human: boolean };
 
 // ── Detección de eras: parte los meses por las (K-1) mayores rupturas de CPA ──
-function detectEras(daily: Daily[]): { from: string; to: string; label: string }[] {
+function detectEras(daily: Daily[]): { from: string; to: string }[] {
   if (daily.length === 0) return [];
   const byMonth = new Map<string, { firstDay: string; lastDay: string; spend: number; conv: number }>();
   for (const r of daily) {
@@ -43,8 +47,6 @@ function detectEras(daily: Daily[]): { from: string; to: string; label: string }
   }
   let months = [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))
     .map(([month, v]) => ({ month, ...v, cpa: v.conv > 0 ? v.spend / v.conv : null as number | null }));
-
-  // Fusiona meses de gasto residual (arranque/pausa) con el mes vecino.
   const spends = months.map((m) => m.spend).sort((a, b) => a - b);
   const medianSpend = spends[Math.floor(spends.length / 2)] || 0;
   const merged: typeof months = [];
@@ -56,25 +58,15 @@ function detectEras(daily: Daily[]): { from: string; to: string; label: string }
     } else merged.push({ ...mo });
   }
   months = merged;
-  if (months.length <= 1) {
-    const only = months[0];
-    return only ? [{ from: only.firstDay, to: only.lastDay, label: "Traficker 1" }] : [];
-  }
+  if (months.length <= 1) return months[0] ? [{ from: months[0].firstDay, to: months[0].lastDay }] : [];
 
-  const K = Math.min(4, Math.max(2, Math.round(months.length / 2)));
-  // Separación mínima entre cortes: evita que dos rupturas adyacentes (típico en
-  // una recuperación de CPA mes a mes) generen eras de un solo mes mientras el
-  // resto queda en un bloque enorme. Con ≥5 meses exigimos ≥2 meses por era.
+  const K = Math.min(5, Math.max(2, Math.round(months.length / 2)));
   const MIN_GAP = months.length >= 5 ? 2 : 1;
-  // Candidatos de corte = magnitud del cambio de CPA entre meses consecutivos.
   const boundaries: { idx: number; mag: number }[] = [];
   for (let i = 0; i < months.length - 1; i++) {
     const a = months[i].cpa, b = months[i + 1].cpa;
-    const mag = a != null && b != null && a > 0 ? Math.abs(b - a) / a : 0;
-    boundaries.push({ idx: i + 1, mag });
+    boundaries.push({ idx: i + 1, mag: a != null && b != null && a > 0 ? Math.abs(b - a) / a : 0 });
   }
-  // Selección greedy por magnitud respetando MIN_GAP contra el inicio, el fin y
-  // los cortes ya elegidos → eras equilibradas.
   const chosen: number[] = [];
   for (const b of boundaries.filter((x) => x.mag > 0).sort((x, y) => y.mag - x.mag)) {
     if (chosen.length >= K - 1) break;
@@ -83,17 +75,62 @@ function detectEras(daily: Daily[]): { from: string; to: string; label: string }
     chosen.push(b.idx);
   }
   const cuts = chosen.sort((a, b) => a - b);
-
-  const eras: { from: string; to: string; label: string }[] = [];
+  const eras: { from: string; to: string }[] = [];
   let start = 0;
-  const splitPoints = [...cuts, months.length];
-  for (const sp of splitPoints) {
+  for (const sp of [...cuts, months.length]) {
     const grp = months.slice(start, sp);
-    if (grp.length === 0) continue;
-    eras.push({ from: grp[0].firstDay, to: grp[grp.length - 1].lastDay, label: `Traficker ${eras.length + 1}` });
+    if (grp.length) eras.push({ from: grp[0].firstDay, to: grp[grp.length - 1].lastDay });
     start = sp;
   }
   return eras;
+}
+
+// Rendimiento por día de la semana + fin de semana, sobre un subconjunto diario.
+function dowStats(rows: Daily[]) {
+  const acc = DOW.map(() => ({ spend: 0, conv: 0 }));
+  for (const r of rows) { const d = new Date(r.d + "T00:00:00Z").getUTCDay(); acc[d].spend += r.spend; acc[d].conv += r.conv; }
+  const table = acc.map((v, i) => ({ dia: DOW[i], gasto: r0(v.spend), conv: v.conv, cpa: v.conv > 0 ? r2(v.spend / v.conv) : null }));
+  const conCpa = table.filter((t) => t.cpa != null && t.gasto > 0);
+  const best = [...conCpa].sort((a, b) => (a.cpa! - b.cpa!))[0] ?? null;
+  const worst = [...conCpa].sort((a, b) => (b.cpa! - a.cpa!))[0] ?? null;
+  const we = new Set([0, 6]);
+  const wknd = acc.reduce((s, v, i) => we.has(i) ? { spend: s.spend + v.spend, conv: s.conv + v.conv } : s, { spend: 0, conv: 0 });
+  const wkdy = acc.reduce((s, v, i) => !we.has(i) ? { spend: s.spend + v.spend, conv: s.conv + v.conv } : s, { spend: 0, conv: 0 });
+  return {
+    table, best, worst,
+    weekend_cpa: wknd.conv > 0 ? r2(wknd.spend / wknd.conv) : null,
+    weekday_cpa: wkdy.conv > 0 ? r2(wkdy.spend / wkdy.conv) : null,
+    weekend_conv_pct: (wknd.conv + wkdy.conv) > 0 ? r0((wknd.conv / (wknd.conv + wkdy.conv)) * 100) : 0,
+  };
+}
+
+function isoMonday(dstr: string): string {
+  const d = new Date(dstr + "T00:00:00Z");
+  const day = (d.getUTCDay() + 6) % 7; // lunes=0
+  d.setUTCDate(d.getUTCDate() - day);
+  return d.toISOString().slice(0, 10);
+}
+
+// Cadencia (creativos lanzados/semana), hit rate y vida útil, sobre un subconjunto de ad_life.
+function creativeStats(life: AdLife[], winnerCpa: number) {
+  const launched = life.filter((a) => a.spend >= 50);
+  const winners = launched.filter((a) => a.conv >= 8 && a.spend / a.conv <= winnerCpa);
+  const weeks = new Map<string, number>();
+  for (const a of life) if (a.spend >= 20) weeks.set(isoMonday(a.first_day), (weeks.get(isoMonday(a.first_day)) ?? 0) + 1);
+  const perWeek = [...weeks.values()];
+  const runners = life.filter((a) => a.spend >= 100).map((a) => a.active_days).sort((a, b) => a - b);
+  const median = runners.length ? runners[Math.floor(runners.length / 2)] : null;
+  const longRunners = [...life].filter((a) => a.spend >= 150).sort((a, b) => b.active_days - a.active_days).slice(0, 5)
+    .map((a) => ({ name: a.ad_name, dias: a.active_days, gasto: r0(a.spend), conv: a.conv, cpa: a.conv > 0 ? r2(a.spend / a.conv) : null }));
+  return {
+    lanzados: launched.length,
+    ganadores: winners.length,
+    hit_rate: launched.length ? r0((winners.length / launched.length) * 100) : 0,
+    cadencia_semana: perWeek.length ? r2(perWeek.reduce((s, n) => s + n, 0) / perWeek.length) : 0,
+    vida_media_dias: runners.length ? r0(runners.reduce((s, n) => s + n, 0) / runners.length) : null,
+    vida_mediana_dias: median,
+    longevos: longRunners,
+  };
 }
 
 function analyzeAds(ads: AdRow[]) {
@@ -123,8 +160,6 @@ function analyzeAds(ads: AdRow[]) {
     cpa: a.conv > 0 ? r2(a.spend / a.conv) : null,
     ctr: a.ctr ? r2(a.ctr) : null, thumbstop: a.thumbstop ? r2(a.thumbstop) : null, freq: a.freq ? r2(a.freq) : null,
   }));
-  const ganadores = withCpa.filter((a) => a.conv >= 5 && a.gasto >= 150).sort((a, b) => (a.cpa ?? 1e9) - (b.cpa ?? 1e9)).slice(0, 6);
-  const quemadores = withCpa.filter((a) => a.gasto >= 250 && (a.conv === 0 || (a.cpa ?? 0) >= 90)).sort((a, b) => b.gasto - a.gasto).slice(0, 5);
   return {
     n_creativos: ads.length,
     lal_pct: total > 0 ? r0((lalSpend / total) * 100) : 0,
@@ -134,8 +169,22 @@ function analyzeAds(ads: AdRow[]) {
     formatos: { video: r0(fmt.video), imagen: r0(fmt.imagen), carrusel: r0(fmt.carrusel), otro: r0(fmt.otro) },
     angulos: [...angles.entries()].map(([ang, v]) => ({ angulo: ang, gasto: r0(v.spend), conv: v.conv }))
       .sort((a, b) => b.gasto - a.gasto).slice(0, 6),
-    ganadores, quemadores,
+    ganadores: withCpa.filter((a) => a.conv >= 5 && a.gasto >= 150).sort((a, b) => (a.cpa ?? 1e9) - (b.cpa ?? 1e9)).slice(0, 6),
+    quemadores: withCpa.filter((a) => a.gasto >= 250 && (a.conv === 0 || (a.cpa ?? 0) >= 90)).sort((a, b) => b.gasto - a.gasto).slice(0, 5),
   };
+}
+
+// Actor humano dominante en un rango de meses (suma traf_actions entre cuentas).
+function actorsForRange(actorRows: ActorRow[], from: string, to: string) {
+  const months = new Set<string>();
+  const d = new Date(from + "T00:00:00Z"), end = new Date(to + "T00:00:00Z");
+  for (let x = new Date(d); x <= end; x.setUTCMonth(x.getUTCMonth() + 1)) months.add(x.toISOString().slice(0, 7));
+  const agg = new Map<string, number>();
+  for (const r of actorRows) {
+    if (!r.is_human || !months.has(r.month)) continue;
+    agg.set(r.actor_name, (agg.get(r.actor_name) ?? 0) + r.traf_actions);
+  }
+  return [...agg.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, acciones]) => ({ name, acciones }));
 }
 
 async function buildReport() {
@@ -146,21 +195,43 @@ async function buildReport() {
     spend_blind: Number(r.spend_blind) || 0, conv_trusted: Number(r.conv_trusted) || 0,
   })) as Daily[];
 
+  const { data: lifeRaw } = await sb.rpc("traf999_ad_life");
+  const adLife = (lifeRaw ?? []).map((a: Record<string, unknown>) => ({
+    ad_name: String(a.ad_name ?? ""), campaign_name: (a.campaign_name as string) ?? null,
+    first_day: String(a.first_day), last_day: String(a.last_day), active_days: Number(a.active_days) || 0,
+    spend: Number(a.spend) || 0, conv: Number(a.conv) || 0, impressions: Number(a.impressions) || 0, max_freq: a.max_freq != null ? Number(a.max_freq) : null,
+  })) as AdLife[];
+
+  const { data: actorRaw } = await sb.from("traficker_actor_activity").select("account_id, actor_name, month, actions, traf_actions, is_human");
+  const actorRows = (actorRaw ?? []) as ActorRow[];
+
   const totalSpend = daily.reduce((s, r) => s + r.spend, 0);
   const totalConv = daily.reduce((s, r) => s + r.conv, 0);
   const blindSpend = daily.reduce((s, r) => s + r.spend_blind, 0);
+  const globalCpa = totalConv > 0 ? totalSpend / totalConv : 0;
+  const winnerCpa = Math.max(35, globalCpa);
+
+  const topConvDays = [...daily].sort((a, b) => b.conv - a.conv).slice(0, 6)
+    .map((r) => ({ d: r.d, dia: DOW[new Date(r.d + "T00:00:00Z").getUTCDay()], conv: r.conv, gasto: r0(r.spend), cpa: r.conv > 0 ? r2(r.spend / r.conv) : null }));
+
   const globalMeta = {
     desde: daily[0]?.d ?? null, hasta: daily[daily.length - 1]?.d ?? null,
     gasto: r0(totalSpend), conversiones: totalConv,
-    cpa_blended: totalConv > 0 ? r2(totalSpend / totalConv) : null,
+    cpa_blended: totalConv > 0 ? r2(globalCpa) : null,
     gasto_a_ciegas: r0(blindSpend), pct_ciego: totalSpend > 0 ? r0((blindSpend / totalSpend) * 100) : 0,
     cpa_efectivo: totalConv > 0 ? r2((totalSpend - blindSpend) / totalConv) : null,
+    dow: dowStats(daily),
+    dias_relevantes: topConvDays,
+    creativos: creativeStats(adLife, winnerCpa),
+    nota_calidad: "Las 'conversiones' de Meta son eventos del píxel, NO ventas verificadas. Nov-Dic 2025: sin conversiones registradas. Ene-Mar 2026: fase de test del evento de compra (campañas TYP_TEST) con conteos inflados y CPA irreal (<€15). Abr-2026 en adelante: evento actual (purchase_or_lead). Además, el 63% del gasto se optimizó a un 'purchase' que el píxel nunca registró.",
   };
 
   const eraRanges = detectEras(daily);
   const eras: Record<string, unknown>[] = [];
   let prevCpa: number | null = null;
+  let idx = 0;
   for (const er of eraRanges) {
+    idx++;
     const inRange = daily.filter((r) => r.d >= er.from && r.d <= er.to);
     const spend = inRange.reduce((s, r) => s + r.spend, 0);
     const conv = inRange.reduce((s, r) => s + r.conv, 0);
@@ -176,52 +247,55 @@ async function buildReport() {
       preview: (a.preview as string) ?? null,
     })) as AdRow[];
     const detail = analyzeAds(ads);
+    const lifeInEra = adLife.filter((a) => a.first_day >= er.from && a.first_day <= er.to);
     const dias = new Set(inRange.filter((r) => r.spend > 0).map((r) => r.d)).size;
     const tendencia = prevCpa != null && cpa != null ? r0(((cpa - prevCpa) / prevCpa) * 100) : null;
+    const actors = actorsForRange(actorRows, er.from, er.to);
     eras.push({
-      label: er.label, from: er.from, to: er.to, dias,
+      label: `Traficker ${idx}`, from: er.from, to: er.to, dias,
+      actores: actors,
       gasto: r0(spend), conversiones: conv,
       cpa_blended: cpa != null ? r2(cpa) : null,
       cpa_efectivo: conv > 0 ? r2((spend - blind) / conv) : null,
       gasto_a_ciegas: r0(blind), pct_ciego: spend > 0 ? r0((blind / spend) * 100) : 0,
       tendencia_cpa_pct: tendencia,
+      conv_dudosa: conv === 0 || (cpa != null && cpa < 15), // eventos de test/lead, no ventas 9,99 comparables
+      dow: dowStats(inRange),
+      creativos: creativeStats(lifeInEra, winnerCpa),
       ...detail,
     });
     prevCpa = cpa;
   }
 
-  // Síntesis IA por era + playbook consolidado
+  // Síntesis IA
   const key = (process.env.ANTHROPIC_API_KEY ?? "").replace(/[^\x20-\x7E]/g, "").trim();
   let ai: Record<string, unknown> = { eras: [], playbook: null, error: key ? null : "no_llm" };
   if (key && eras.length > 0) {
-    const system = `Eres director de adquisición (paid media) de Mente Sana, psicología online. Producto: diagnóstico 9,99€. Analizas la historia REAL de la cuenta de Meta, ya troceada por "eras" de traficker (auto-detectadas por rupturas de CPA; SIN nombres → Traficker 1/2/3). Tu misión: convertir esos datos en MEMORIA INSTITUCIONAL para que el siguiente traficker no empiece de cero.
+    const system = `Eres director de adquisición (paid media) de Mente Sana, psicología online. Producto: diagnóstico 9,99€. Analizas la historia REAL y COMPLETA de la cuenta de Meta (desde nov-2025), ya troceada por "eras" de traficker (auto-detectadas por rupturas de CPA) y ATRIBUIDA a la persona real que operó cada era (campo "actores", del activity log). Tu misión: convertir todo esto en MEMORIA INSTITUCIONAL para que el siguiente traficker no empiece de cero.
 
-Habla en español, directo, con CIFRAS de los datos que te doy (no inventes). Contexto crítico del negocio: el ${globalMeta.pct_ciego}% del gasto (€${globalMeta.gasto_a_ciegas}) se optimizó a un evento 'purchase' que el píxel NUNCA registró → Meta optimizó a ciegas y eso infló el CPA de forma estructural, independientemente del traficker. Tenlo en cuenta al juzgar a cada era.
+Habla en español, directo, con CIFRAS de los datos (no inventes). Aprovecha TODO: rendimiento por día de la semana y fin de semana (campo dow), días relevantes, cadencia de lanzamiento de creativos, hit rate (% de creativos lanzados que ganan) y vida útil de los creativos (campo creativos). Contexto crítico: el ${globalMeta.pct_ciego}% del gasto (€${globalMeta.gasto_a_ciegas}) se optimizó a un evento 'purchase' que el píxel NUNCA registró → Meta optimizó a ciegas e infló el CPA de forma estructural, independiente del traficker.
 
-Responde SOLO JSON válido con esta forma:
+CALIDAD DE DATO (¡crítico!): ${globalMeta.nota_calidad} Cuando una era tenga conv_dudosa=true (CPA irreal <€15 o 0 conversiones), NO la elogies por su "buen CPA" — ese conteo son eventos de test/leads, no ventas 9,99. En esas eras, el aprendizaje es sobre el tracking/estructura, no sobre eficiencia de compra.
+
+Responde SOLO JSON válido:
 {
- "eras": [
-   { "label": "Traficker 1",
-     "titulo": "apodo corto y memorable de su estilo (ej: 'El ordenado que probó ángulos')",
-     "resumen": "2-3 frases de qué hizo y con qué resultado",
-     "funciono": [{ "t": "táctica concreta", "metric": "cifra que lo respalda" }],
-     "fallo": [{ "t": "error concreto", "metric": "cifra" }],
-     "para_el_siguiente": ["acción concreta a copiar o evitar"],
-     "tags": ["creativo","segmentacion","puja","embudo","tracking","landing"] } ],
- "playbook": {
-   "gana": ["lo que consistentemente funciona en esta cuenta, con cifras"],
-   "evita": ["lo que consistentemente falla, con cifras"],
-   "arreglar_ya": ["fixes de infra/tracking prioritarios"] }
+ "eras": [ { "label": "Traficker 1", "actor": "nombre real dominante o null",
+    "titulo": "apodo corto de su estilo", "resumen": "2-3 frases con cifras",
+    "funciono": [{"t":"táctica","metric":"cifra"}], "fallo": [{"t":"error","metric":"cifra"}],
+    "para_el_siguiente": ["acción concreta"], "tags": ["creativo","segmentacion","puja","embudo","tracking","cadencia","timing"] } ],
+ "playbook": { "gana": ["regla con cifras"], "evita": ["regla con cifras"],
+    "timing": ["cuándo lanzar/escalar: mejor día, findes, cadencia — con cifras"],
+    "creativos": ["hit rate + vida útil: cada cuánto refrescar, qué dura — con cifras"],
+    "arreglar_ya": ["fixes de tracking/infra"] }
 }
-Un elemento por era en "eras", con el MISMO label que te paso. 2-4 bullets por lista.`;
-    const payload = { global: globalMeta, eras };
+Un elemento por era con el MISMO label. 2-4 bullets por lista.`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
-          model: "claude-opus-4-7", max_tokens: 3000, system,
-          messages: [{ role: "user", content: `DATOS:\n${JSON.stringify(payload)}` }],
+          model: "claude-opus-4-7", max_tokens: 4000, system,
+          messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ global: globalMeta, eras })}` }],
         }),
       });
       const j = await res.json();
@@ -251,7 +325,6 @@ export async function GET(req: NextRequest) {
 
   let report: Awaited<ReturnType<typeof buildReport>> | null = null;
   let cached = false;
-
   if (!refresh) {
     const { data } = await sb.from("traficker_playbook_cache").select("*").eq("id", CACHE_ID).maybeSingle();
     if (data?.report) {
@@ -259,15 +332,12 @@ export async function GET(req: NextRequest) {
       if (ageMs < 24 * 3600 * 1000) { report = data.report; cached = true; }
     }
   }
-
   if (!report) {
     report = await buildReport();
     const fp = fingerprintOf(report);
     await sb.from("traficker_playbook_cache").upsert({ id: CACHE_ID, report, fingerprint: fp, generated_at: new Date().toISOString() });
   }
-
   const { data: manual } = await sb.from("traficker_learnings").select("*").order("created_at", { ascending: false }).limit(200);
-
   return NextResponse.json({ ...report, manual: manual ?? [], cached });
 }
 
@@ -285,7 +355,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // add
   const title = String(body.title ?? "").trim();
   if (!title) return NextResponse.json({ error: "missing_title" }, { status: 400 });
   const row = {
