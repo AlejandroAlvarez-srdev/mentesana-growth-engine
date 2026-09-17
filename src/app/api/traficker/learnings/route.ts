@@ -322,7 +322,7 @@ Responde SOLO JSON válido:
     "creativos": ["hit rate + vida útil: cada cuánto refrescar, qué dura — con cifras"],
     "arreglar_ya": ["fixes de tracking/infra"] }
 }
-Un elemento por era con el MISMO label. 2-4 bullets por lista. Las claves y conclusiones deben ser AFIRMACIONES tajantes con números, no genéricas.
+Un elemento por era con el MISMO label. SÉ CONCISO en las eras: resumen 1 frase, funciono/fallo máx 2 bullets cada uno, para_el_siguiente máx 2. Las claves (máx 5) y conclusiones (máx 3 por lista) deben ser AFIRMACIONES tajantes con números, no genéricas.
 
 CRÍTICO de FORMATO: devuelve JSON 100% válido. Dentro de los valores de texto NO uses comillas dobles (") — si necesitas citar un nombre de anuncio o ángulo usa comillas simples ('VOLVER'). No pongas comas colgantes. No añadas texto fuera del JSON.`;
     try {
@@ -330,7 +330,7 @@ CRÍTICO de FORMATO: devuelve JSON 100% válido. Dentro de los valores de texto 
         method: "POST",
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
-          model: "claude-opus-4-7", max_tokens: 8000, system,
+          model: "claude-opus-4-7", max_tokens: 6000, system,
           messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ global: globalMeta, eras })}` }],
         }),
       });
