@@ -35,7 +35,13 @@ type Report = {
     dow: Dow; dias_relevantes: { d: string; dia: string; conv: number; gasto: number; cpa: number | null }[]; creativos: Creativos;
   };
   eras: Era[];
-  ai: { eras: EraAI[]; playbook: { gana?: string[]; evita?: string[]; timing?: string[]; creativos?: string[]; arreglar_ya?: string[] } | null; error?: string | null };
+  ai: {
+    eras: EraAI[];
+    claves_exito?: string[]; claves_fracaso?: string[];
+    conclusiones?: { mejores_dias?: string[]; cadencia_ads?: string[]; que_mas_hacian?: string[] };
+    playbook: { gana?: string[]; evita?: string[]; timing?: string[]; creativos?: string[]; arreglar_ya?: string[] } | null;
+    error?: string | null;
+  };
   manual: Manual[];
   cached: boolean;
   generated_at: string;
@@ -100,6 +106,26 @@ export default function AprendizajesTab() {
           <span style={{ fontSize: 18 }}>🚨</span>
           <div style={{ fontSize: 12, color: "#9a3412", lineHeight: 1.5 }}>
             <strong>Hueco de tracking estructural.</strong> {eur(g.gasto_a_ciegas)} ({g.pct_ciego}% del presupuesto) se optimizaron a un evento <em>purchase</em> que el píxel <strong>nunca registró</strong> → Meta optimizó a ciegas y el CPA salió inflado <em>para todos</em> los trafickers. Arreglar el evento de compra es la palanca nº1.
+          </div>
+        </div>
+      )}
+
+      {/* Claves del éxito y del fracaso */}
+      {Boolean(data.ai?.claves_exito?.length || data.ai?.claves_fracaso?.length) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 }}>
+          <ClaveBox title="🔑 Claves del ÉXITO" color="#0F7A52" bg="#f0fdf4" items={data.ai?.claves_exito} />
+          <ClaveBox title="⛔ Claves del FRACASO" color="#dc2626" bg="#fef2f2" items={data.ai?.claves_fracaso} />
+        </div>
+      )}
+
+      {/* Conclusiones: días / cadencia / qué más hacían */}
+      {Boolean(data.ai?.conclusiones && (data.ai.conclusiones.mejores_dias?.length || data.ai.conclusiones.cadencia_ads?.length || data.ai.conclusiones.que_mas_hacian?.length)) && (
+        <div style={{ background: "#fff", border: `1px solid ${PURPLE}22`, borderRadius: 14, padding: 16 }}>
+          <h3 style={{ margin: "0 0 12px", color: PURPLE, fontSize: 15 }}>🧠 Conclusiones <span style={{ fontSize: 10.5, fontWeight: 600, color: "#94a3b8" }}>lo que más movía la aguja</span></h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
+            <PlaybookCol title="📅 Mejores días / findes" color={GOLD} items={data.ai!.conclusiones!.mejores_dias} />
+            <PlaybookCol title="🎬 Cadencia de ads" color={PURPLE} items={data.ai!.conclusiones!.cadencia_ads} />
+            <PlaybookCol title="⭐ Qué más hacían" color="#0F7A52" items={data.ai!.conclusiones!.que_mas_hacian} />
           </div>
         </div>
       )}
@@ -396,6 +422,17 @@ function MiniStat({ label, value, sub, subColor }: { label: string; value: strin
     <div style={{ textAlign: "right" }}>
       <div style={{ fontSize: 9.5, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>{value}{sub && <span style={{ fontSize: 10.5, fontWeight: 700, color: subColor, marginLeft: 4 }}>{sub}</span>}</div>
+    </div>
+  );
+}
+function ClaveBox({ title, color, bg, items }: { title: string; color: string; bg: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div style={{ background: bg, border: `1px solid ${color}44`, borderRadius: 14, padding: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color, marginBottom: 8 }}>{title}</div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "#334155", lineHeight: 1.6, display: "grid", gap: 4 }}>
+        {items.map((s, k) => <li key={k}>{s}</li>)}
+      </ul>
     </div>
   );
 }

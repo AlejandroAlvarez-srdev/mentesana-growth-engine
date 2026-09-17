@@ -283,18 +283,25 @@ Responde SOLO JSON válido:
     "titulo": "apodo corto de su estilo", "resumen": "2-3 frases con cifras",
     "funciono": [{"t":"táctica","metric":"cifra"}], "fallo": [{"t":"error","metric":"cifra"}],
     "para_el_siguiente": ["acción concreta"], "tags": ["creativo","segmentacion","puja","embudo","tracking","cadencia","timing"] } ],
+ "claves_exito": ["3-5 claves CONCRETAS de lo que hacían los que bajaban el CAC, cada una con su cifra (creativo, ángulo, segmentación, día, cadencia…)"],
+ "claves_fracaso": ["3-5 claves CONCRETAS de lo que disparaba el CAC o hundía resultados, cada una con su cifra"],
+ "conclusiones": {
+    "mejores_dias": ["mejores y peores días de la semana con su CPA (usa el campo dow); di explícitamente qué pasa en SÁBADOS y findes vs entre semana, con cifras"],
+    "cadencia_ads": ["cada cuánto se montaban ads y qué ritmo funcionó mejor (usa creativos.cadencia_semana, hit_rate y vida útil): cuántos creativos nuevos/semana, cada cuánto refrescar"],
+    "que_mas_hacian": ["otros patrones de lo que MÁS hacían los que cerraban CAC bajo (formatos, LAL vs broad, nº de ángulos, escalado…), con cifras"]
+ },
  "playbook": { "gana": ["regla con cifras"], "evita": ["regla con cifras"],
     "timing": ["cuándo lanzar/escalar: mejor día, findes, cadencia — con cifras"],
     "creativos": ["hit rate + vida útil: cada cuánto refrescar, qué dura — con cifras"],
     "arreglar_ya": ["fixes de tracking/infra"] }
 }
-Un elemento por era con el MISMO label. 2-4 bullets por lista.`;
+Un elemento por era con el MISMO label. 2-4 bullets por lista. Las claves y conclusiones deben ser AFIRMACIONES tajantes con números, no genéricas.`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
-          model: "claude-opus-4-7", max_tokens: 4000, system,
+          model: "claude-opus-4-7", max_tokens: 5000, system,
           messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ global: globalMeta, eras })}` }],
         }),
       });
@@ -319,18 +326,22 @@ function fingerprintOf(report: { eras: Record<string, unknown>[]; global: Record
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireTrafickerOrAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  // Auth: cookie de traficker/admin O x-insights-secret (para hornear el informe).
+  const secret = (req.headers.get("x-insights-secret") ?? "").trim();
+  const bySecret = !!secret && secret === (process.env.INSIGHTS_SECRET ?? "REDACTED_SECRET");
+  if (!bySecret) {
+    const auth = await requireTrafickerOrAdmin(req);
+    if (auth instanceof NextResponse) return auth;
+  }
   const refresh = new URL(req.url).searchParams.get("refresh") === "1";
 
   let report: Awaited<ReturnType<typeof buildReport>> | null = null;
   let cached = false;
+  // CONGELADO: si hay informe guardado se devuelve SIEMPRE (no se recalcula solo).
+  // Solo se regenera con ?refresh=1 (botón ↻ Recalcular) o si no existe cache.
   if (!refresh) {
     const { data } = await sb.from("traficker_playbook_cache").select("*").eq("id", CACHE_ID).maybeSingle();
-    if (data?.report) {
-      const ageMs = Date.now() - new Date(data.generated_at).getTime();
-      if (ageMs < 24 * 3600 * 1000) { report = data.report; cached = true; }
-    }
+    if (data?.report) { report = data.report; cached = true; }
   }
   if (!report) {
     report = await buildReport();
