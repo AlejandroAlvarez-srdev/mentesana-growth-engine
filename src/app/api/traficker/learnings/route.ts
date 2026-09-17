@@ -62,6 +62,10 @@ function detectEras(daily: Daily[]): { from: string; to: string; label: string }
   }
 
   const K = Math.min(4, Math.max(2, Math.round(months.length / 2)));
+  // Separación mínima entre cortes: evita que dos rupturas adyacentes (típico en
+  // una recuperación de CPA mes a mes) generen eras de un solo mes mientras el
+  // resto queda en un bloque enorme. Con ≥5 meses exigimos ≥2 meses por era.
+  const MIN_GAP = months.length >= 5 ? 2 : 1;
   // Candidatos de corte = magnitud del cambio de CPA entre meses consecutivos.
   const boundaries: { idx: number; mag: number }[] = [];
   for (let i = 0; i < months.length - 1; i++) {
@@ -69,7 +73,16 @@ function detectEras(daily: Daily[]): { from: string; to: string; label: string }
     const mag = a != null && b != null && a > 0 ? Math.abs(b - a) / a : 0;
     boundaries.push({ idx: i + 1, mag });
   }
-  const cuts = boundaries.sort((x, y) => y.mag - x.mag).slice(0, K - 1).map((b) => b.idx).sort((a, b) => a - b);
+  // Selección greedy por magnitud respetando MIN_GAP contra el inicio, el fin y
+  // los cortes ya elegidos → eras equilibradas.
+  const chosen: number[] = [];
+  for (const b of boundaries.filter((x) => x.mag > 0).sort((x, y) => y.mag - x.mag)) {
+    if (chosen.length >= K - 1) break;
+    if (b.idx < MIN_GAP || b.idx > months.length - MIN_GAP) continue;
+    if (chosen.some((c) => Math.abs(c - b.idx) < MIN_GAP)) continue;
+    chosen.push(b.idx);
+  }
+  const cuts = chosen.sort((a, b) => a - b);
 
   const eras: { from: string; to: string; label: string }[] = [];
   let start = 0;
