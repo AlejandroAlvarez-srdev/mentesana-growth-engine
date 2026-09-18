@@ -24,6 +24,7 @@ export default function EficaciaTab() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [view, setView] = useState<"calendario" | "tabla">("calendario");
 
   useEffect(() => {
     let alive = true;
@@ -79,39 +80,56 @@ export default function EficaciaTab() {
             </div>
           )}
 
-          {/* Tabla diaria */}
+          {/* Detalle diario: calendario o tabla */}
           <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 14, padding: 16 }}>
-            <h3 style={{ margin: "0 0 4px", color: PURPLE, fontSize: 15 }}>Eficacia por día de captación</h3>
-            <p style={{ margin: "0 0 12px", fontSize: 11.5, color: "#94a3b8" }}>Cada fila = leads que pagaron el 9,99€ ese día. Asistencia y venta cuentan aunque ocurran días después. <span style={{ color: GOLD }}>◐ inmaduro</span> = captado hace &lt;10 días (aún puede asistir/comprar).</p>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
-                <thead>
-                  <tr style={{ color: "#94a3b8", textAlign: "left", fontSize: 11 }}>
-                    <th style={th}>Día</th>
-                    <th style={thr}>Captadas</th>
-                    <th style={thr}>Asistidas</th>
-                    <th style={thr}>% asist.</th>
-                    <th style={thr}>Vendidas</th>
-                    <th style={thr}>% venta</th>
-                    <th style={{ ...th, width: 120 }}>Embudo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.daily.map((r) => (
-                    <tr key={r.date} style={{ borderTop: "1px solid rgba(0,0,0,0.05)", opacity: r.inmaduro ? 0.62 : 1 }}>
-                      <td style={td}>{r.inmaduro && <span title="inmaduro" style={{ color: GOLD }}>◐ </span>}<strong>{fmtDate(r.date)}</strong> <span style={{ color: "#cbd5e1", fontSize: 11 }}>{dow(r.date)}</span></td>
-                      <td style={{ ...tdr, fontWeight: 800 }}>{r.captadas}</td>
-                      <td style={tdr}>{data.amelia_ok ? r.asistidas : "—"}</td>
-                      <td style={{ ...tdr, color: GOLD, fontWeight: 700 }}>{r.pct_asist != null ? `${r.pct_asist}%` : "—"}</td>
-                      <td style={tdr}>{r.vendidas}</td>
-                      <td style={{ ...tdr, color: GREEN, fontWeight: 800 }}>{r.pct_venta != null ? `${r.pct_venta}%` : "—"}</td>
-                      <td style={td}><MiniFunnel cap={r.captadas} asi={data.amelia_ok ? r.asistidas : null} ven={r.vendidas} /></td>
-                    </tr>
-                  ))}
-                  {data.daily.length === 0 && <tr><td colSpan={7} style={{ ...td, color: "#94a3b8", textAlign: "center", padding: 24 }}>Sin captaciones en el periodo.</td></tr>}
-                </tbody>
-              </table>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h3 style={{ margin: "0 0 4px", color: PURPLE, fontSize: 15 }}>Eficacia por día de captación</h3>
+                <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8" }}>Cada día = leads que pagaron el 9,99€ ese día. Asistencia y venta cuentan aunque ocurran días después. <span style={{ color: GOLD }}>◐ inmaduro</span> = captado hace &lt;10 días (aún puede asistir/comprar).</p>
+              </div>
+              <div style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: "#f1f5f9", gap: 2 }}>
+                {(["calendario", "tabla"] as const).map((v) => (
+                  <button key={v} onClick={() => setView(v)} style={{ padding: "6px 12px", fontSize: 12, fontWeight: 800, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "inherit", background: view === v ? PURPLE : "transparent", color: view === v ? "#fff" : "#64748b" }}>{v === "calendario" ? "📅 Calendario" : "Tabla"}</button>
+                ))}
+              </div>
             </div>
+
+            {data.daily.length === 0 && <div style={{ padding: 24, color: "#94a3b8", textAlign: "center" }}>Sin captaciones en el periodo.</div>}
+
+            {data.daily.length > 0 && view === "calendario" && (
+              <CalendarView daily={data.daily} ameliaOk={data.amelia_ok} />
+            )}
+
+            {data.daily.length > 0 && view === "tabla" && (
+              <div style={{ overflowX: "auto", marginTop: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
+                  <thead>
+                    <tr style={{ color: "#94a3b8", textAlign: "left", fontSize: 11 }}>
+                      <th style={th}>Día</th>
+                      <th style={thr}>Captadas</th>
+                      <th style={thr}>Asistidas</th>
+                      <th style={thr}>% asist.</th>
+                      <th style={thr}>Vendidas</th>
+                      <th style={thr}>% venta</th>
+                      <th style={{ ...th, width: 120 }}>Embudo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.daily.map((r) => (
+                      <tr key={r.date} style={{ borderTop: "1px solid rgba(0,0,0,0.05)", opacity: r.inmaduro ? 0.62 : 1 }}>
+                        <td style={td}>{r.inmaduro && <span title="inmaduro" style={{ color: GOLD }}>◐ </span>}<strong>{fmtDate(r.date)}</strong> <span style={{ color: "#cbd5e1", fontSize: 11 }}>{dow(r.date)}</span></td>
+                        <td style={{ ...tdr, fontWeight: 800 }}>{r.captadas}</td>
+                        <td style={tdr}>{data.amelia_ok ? r.asistidas : "—"}</td>
+                        <td style={{ ...tdr, color: GOLD, fontWeight: 700 }}>{r.pct_asist != null ? `${r.pct_asist}%` : "—"}</td>
+                        <td style={tdr}>{r.vendidas}</td>
+                        <td style={{ ...tdr, color: GREEN, fontWeight: 800 }}>{r.pct_venta != null ? `${r.pct_venta}%` : "—"}</td>
+                        <td style={td}><MiniFunnel cap={r.captadas} asi={data.amelia_ok ? r.asistidas : null} ven={r.vendidas} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -150,6 +168,96 @@ function MiniFunnel({ cap, asi, ven }: { cap: number; asi: number | null; ven: n
       <div style={{ height: 5, borderRadius: 3, width: "100%", background: PURPLE }} />
       {asi != null && <div style={{ height: 5, borderRadius: 3, width: `${w(asi)}%`, background: GOLD }} />}
       <div style={{ height: 5, borderRadius: 3, width: `${w(ven)}%`, background: GREEN }} />
+    </div>
+  );
+}
+
+const MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const WEEKDAYS_ES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+
+// Vista de calendario: una rejilla por mes, cada día con su embudo (captadas→asistidas→vendidas).
+function CalendarView({ daily, ameliaOk }: { daily: Daily[]; ameliaOk: boolean }) {
+  const byDate = new Map(daily.map((d) => [d.date, d]));
+  const dates = daily.map((d) => d.date).sort();
+  const min = dates[0];
+  const max = dates[dates.length - 1];
+  const maxCap = Math.max(1, ...daily.map((d) => d.captadas));
+
+  // Meses (0-indexados) que abarca el rango min→max.
+  const months: { y: number; m: number }[] = [];
+  const [minY, minM] = min.split("-").map(Number);
+  const [maxY, maxM] = max.split("-").map(Number);
+  let y = minY, m = minM;
+  while (y < maxY || (y === maxY && m <= maxM)) {
+    months.push({ y, m: m - 1 });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18, marginTop: 12 }}>
+      {months.map(({ y: yy, m: mm }) => (
+        <MonthGrid key={`${yy}-${mm}`} y={yy} m={mm} byDate={byDate} maxCap={maxCap} ameliaOk={ameliaOk} />
+      ))}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11, color: "#94a3b8", paddingTop: 4 }}>
+        <span><b style={{ color: PURPLE }}>■</b> captadas</span>
+        <span><b style={{ color: GOLD }}>■</b> asistidas</span>
+        <span><b style={{ color: GREEN }}>■</b> vendidas · % venta</span>
+        <span><span style={{ color: GOLD }}>◐</span> inmaduro (&lt;10 días)</span>
+        <span style={{ color: "#cbd5e1" }}>Fondo más morado = más captadas ese día.</span>
+      </div>
+    </div>
+  );
+}
+
+function MonthGrid({ y, m, byDate, maxCap, ameliaOk }: { y: number; m: number; byDate: Map<string, Daily>; maxCap: number; ameliaOk: boolean }) {
+  const firstDow = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7; // lun=0
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(`${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", marginBottom: 8, textTransform: "capitalize" }}>{MONTHS_ES[m]} {y}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(66px, 1fr))", gap: 6, minWidth: 490 }}>
+        {WEEKDAYS_ES.map((w) => (
+          <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "#cbd5e1", textAlign: "center", textTransform: "uppercase", letterSpacing: 0.3 }}>{w}</div>
+        ))}
+        {cells.map((ds, i) => ds == null
+          ? <div key={`e${i}`} />
+          : <DayCell key={ds} ds={ds} row={byDate.get(ds)} maxCap={maxCap} ameliaOk={ameliaOk} />)}
+      </div>
+    </div>
+  );
+}
+
+function DayCell({ ds, row, maxCap, ameliaOk }: { ds: string; row?: Daily; maxCap: number; ameliaOk: boolean }) {
+  const dayNum = Number(ds.slice(8, 10));
+  if (!row) {
+    return (
+      <div style={{ minHeight: 76, borderRadius: 10, border: "1px solid rgba(0,0,0,0.05)", background: "#fafafa", padding: 6 }}>
+        <div style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 700 }}>{dayNum}</div>
+      </div>
+    );
+  }
+  const tint = (0.05 + 0.24 * (row.captadas / maxCap)).toFixed(3);
+  const asi = ameliaOk ? (row.asistidas ?? 0) : null;
+  return (
+    <div
+      title={`${fmtDate(ds)}: ${row.captadas} captadas · ${asi != null ? `${asi} asistidas` : "asist. n/d"} · ${row.vendidas} vendidas${row.pct_venta != null ? ` (${row.pct_venta}% venta)` : ""}${row.inmaduro ? " · inmaduro" : ""}`}
+      style={{ minHeight: 76, borderRadius: 10, border: `1px solid ${PURPLE}22`, background: `rgba(106,23,140,${tint})`, padding: 6, opacity: row.inmaduro ? 0.62 : 1, display: "flex", flexDirection: "column", gap: 3 }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>{dayNum}</span>
+        {row.inmaduro && <span title="inmaduro" style={{ fontSize: 10, color: GOLD }}>◐</span>}
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: PURPLE, lineHeight: 1 }}>{row.captadas}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, marginTop: "auto" }}>
+        <span style={{ color: GOLD }}>{asi != null ? asi : "—"}</span>
+        <span style={{ color: "#cbd5e1" }}>→</span>
+        <span style={{ color: GREEN }}>{row.vendidas}</span>
+        {row.pct_venta != null && <span style={{ marginLeft: "auto", color: GREEN }}>{row.pct_venta}%</span>}
+      </div>
     </div>
   );
 }
