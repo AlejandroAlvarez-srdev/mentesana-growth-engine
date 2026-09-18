@@ -200,7 +200,7 @@ function CalendarView({ daily, ameliaOk }: { daily: Daily[]; ameliaOk: boolean }
       ))}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11, color: "#94a3b8", paddingTop: 4 }}>
         <span><b style={{ color: PURPLE }}>■</b> captadas</span>
-        <span><b style={{ color: GOLD }}>■</b> asistidas</span>
+        <span><b style={{ color: GOLD }}>■</b> asistidas · % asist</span>
         <span><b style={{ color: GREEN }}>■</b> vendidas · % venta</span>
         <span><span style={{ color: GOLD }}>◐</span> inmaduro (&lt;10 días)</span>
         <span style={{ color: "#cbd5e1" }}>Fondo más morado = más captadas ese día.</span>
@@ -235,7 +235,7 @@ function DayCell({ ds, row, maxCap, ameliaOk }: { ds: string; row?: Daily; maxCa
   const dayNum = Number(ds.slice(8, 10));
   if (!row) {
     return (
-      <div style={{ minHeight: 76, borderRadius: 10, border: "1px solid rgba(0,0,0,0.05)", background: "#fafafa", padding: 6 }}>
+      <div style={{ minHeight: 84, borderRadius: 10, border: "1px solid rgba(0,0,0,0.05)", background: "#fafafa", padding: 6 }}>
         <div style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 700 }}>{dayNum}</div>
       </div>
     );
@@ -245,18 +245,23 @@ function DayCell({ ds, row, maxCap, ameliaOk }: { ds: string; row?: Daily; maxCa
   return (
     <div
       title={`${fmtDate(ds)}: ${row.captadas} captadas · ${asi != null ? `${asi} asistidas` : "asist. n/d"} · ${row.vendidas} vendidas${row.pct_venta != null ? ` (${row.pct_venta}% venta)` : ""}${row.inmaduro ? " · inmaduro" : ""}`}
-      style={{ minHeight: 76, borderRadius: 10, border: `1px solid ${PURPLE}22`, background: `rgba(106,23,140,${tint})`, padding: 6, opacity: row.inmaduro ? 0.62 : 1, display: "flex", flexDirection: "column", gap: 3 }}
+      style={{ minHeight: 84, borderRadius: 10, border: `1px solid ${PURPLE}22`, background: `rgba(106,23,140,${tint})`, padding: 6, opacity: row.inmaduro ? 0.62 : 1, display: "flex", flexDirection: "column", gap: 3 }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>{dayNum}</span>
         {row.inmaduro && <span title="inmaduro" style={{ fontSize: 10, color: GOLD }}>◐</span>}
       </div>
       <div style={{ fontSize: 19, fontWeight: 800, color: PURPLE, lineHeight: 1 }}>{row.captadas}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, marginTop: "auto" }}>
-        <span style={{ color: GOLD }}>{asi != null ? asi : "—"}</span>
-        <span style={{ color: "#cbd5e1" }}>→</span>
-        <span style={{ color: GREEN }}>{row.vendidas}</span>
-        {row.pct_venta != null && <span style={{ marginLeft: "auto", color: GREEN }}>{row.pct_venta}%</span>}
+      <div style={{ display: "grid", gap: 1, marginTop: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700 }}>
+          <span style={{ color: GOLD }}>{asi != null ? asi : "—"}</span>
+          <span style={{ color: "#cbd5e1" }}>→</span>
+          <span style={{ color: GREEN }}>{row.vendidas}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 700, lineHeight: 1.1 }}>
+          <span style={{ color: GOLD }} title="% asistencia">{ameliaOk && row.pct_asist != null ? `${row.pct_asist}%` : "—"}</span>
+          {row.pct_venta != null && <span style={{ marginLeft: "auto", color: GREEN }} title="% venta">{row.pct_venta}%</span>}
+        </div>
       </div>
     </div>
   );
