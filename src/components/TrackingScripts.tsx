@@ -30,6 +30,16 @@ export default function TrackingScripts() {
   const analytics = !!consent?.categories.analytics;
   const marketing = !!consent?.categories.marketing;
 
+  // QA de Meta: abre cualquier página con ?meta_test=CODE (el código de "Eventos de prueba" de
+  // Events Manager) y durante 1 h los eventos SERVER-SIDE (CAPI) llevan test_event_code → se ven
+  // en esa pestaña junto a los del pixel del navegador, y Meta no los cuenta como reales.
+  useEffect(() => {
+    try {
+      const code = new URLSearchParams(window.location.search).get("meta_test");
+      if (code && /^[A-Za-z0-9_-]{4,40}$/.test(code)) document.cookie = `ms_meta_test=${code}; path=/; max-age=3600; SameSite=Lax`;
+    } catch {}
+  }, []);
+
   // ViewContent EN TODO LADO: además del PageView del pixel, en cada cambio de ruta de
   // una página PÚBLICA mandamos un ViewContent (pixel + CAPI vía track → view_home/
   // view_content) para que Meta registre la vista de contenido de toda la web. Solo con

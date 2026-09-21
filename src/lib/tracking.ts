@@ -231,8 +231,32 @@ function abLandingVariant(): string | undefined {
   return m?.[1];
 }
 
+// event_id determinista para un Lead identificado por email: el MISMO que calcula el
+// servidor en /api/diagnostico-test (lead_<sha256(email en minúsculas)[:24]>) → Meta
+// deduplica pixel + CAPI del navegador + CAPI del servidor en un solo Lead.
+async function leadEventIdFromEmail(email: string): Promise<string> {
+  const data = new TextEncoder().encode(email.trim().toLowerCase());
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hex = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `lead_${hex.slice(0, 24)}`;
+}
+// Datos personales que NUNCA van como parámetros del pixel/CAPI custom_data (Meta los
+// rechaza o los marca): se quedan solo en la analítica interna.
+const PII_PROPS = ["email", "phone", "name", "telefono", "nombre"];
+const stripPii = (p: EventProps): EventProps => Object.fromEntries(Object.entries(p).filter(([k]) => !PII_PROPS.includes(k)));
+
 export function track(event: string, props: EventProps = {}, eventIdOverride?: string): void {
   if (typeof window === "undefined") return;
+  // Lead con email y sin id explícito → id determinista (async por SubtleCrypto) y luego disparamos.
+  const email = typeof props.email === "string" ? props.email : "";
+  if (!eventIdOverride && META_STANDARD[event] === "Lead" && email && typeof crypto !== "undefined" && crypto.subtle) {
+    leadEventIdFromEmail(email).then((id) => fire(event, props, id)).catch(() => fire(event, props, undefined));
+    return;
+  }
+  fire(event, props, eventIdOverride);
+}
+
+function fire(event: string, props: EventProps, eventIdOverride?: string): void {
   const w = window as FbqWindow;
   const ab = abDiagVariant();
   if (ab) props = { ...props, ab_diag: ab };
@@ -248,6 +272,8 @@ export function track(event: string, props: EventProps = {}, eventIdOverride?: s
 
   // 0. Internal — Supabase analytics_events table (analítica propia, interés legítimo)
   sendInternal(event, props);
+  // A partir de aquí (pixeles, CAPI, dataLayer) los datos personales NO viajan como parámetros.
+  props = stripPii(props);
 
   // 0b. Meta Conversion API (server-side) — marketing, requiere consentimiento
   if (hasConsent("marketing")) sendMetaCAPI(event, props, eventId);

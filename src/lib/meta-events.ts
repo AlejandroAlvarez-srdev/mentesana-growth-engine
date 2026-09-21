@@ -26,14 +26,17 @@ export const META_STANDARD: Record<string, string> = {
   view_content: "ViewContent", // cualquier página pública (route change) → ViewContent en todo lado
   click_cta_empezar: "AddToCart",
   start_matching: "ViewContent",
-  // OJO: Lead y Schedule del embudo 9,99 se disparan SERVER-SIDE (CAPI), NO aquí:
-  //   Lead     → src/app/api/diagnostico-test/route.ts cuando llega el email (sendCAPILead)
-  //   Schedule → src/lib/amelia-create-booking.ts al crear la cita       (sendCAPISchedule)
-  // El pixel client-side solo carga con consentimiento marketing (TrackingScripts) y con
-  // Consent Mode default-denied + ITP se perdía >50% de los Lead/Schedule. El server no
-  // depende del navegador (matchea por email/fbc/fbp) → llegan a Meta "por todo lado".
+  // Lead del embudo 9,99 = la persona DEJA EL EMAIL en el gate. Sale por DOS vías con el
+  // MISMO event_id (lead_<sha256(email)[:24]>) y Meta deduplica:
+  //   - servidor: src/app/api/diagnostico-test/route.ts (sendCAPILead) → no depende del
+  //     navegador (ITP/consentimiento), matchea por email/fbc/fbp.
+  //   - navegador: start_matching_analysis (se dispara justo después de guardar el email,
+  //     lleva props.email → lib/tracking calcula el mismo event_id). Así el Lead se ve al
+  //     instante en "Eventos de prueba" de Events Manager y en el pixel del navegador.
+  //   Schedule → src/lib/amelia-create-booking.ts al crear la cita (sendCAPISchedule).
   // view_email_gate/select_slot se quedan como CUSTOM (siguen en analytics_events y en el
   // dataLayer para medir el embudo), pero NO mapean a estándar → así no hay doble conteo.
+  start_matching_analysis: "Lead",
   view_match_result: "ViewContent",
   initiate_checkout: "InitiateCheckout",
   purchase: "Purchase",

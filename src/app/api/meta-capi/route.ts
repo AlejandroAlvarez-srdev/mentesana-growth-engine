@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 // mapa estaba recortado (faltaban start_matching, initiate_checkout, select_slot…) y
 // rompía la dedup de los eventos de embudo.
 import { META_STANDARD } from "@/lib/meta-events";
+import { metaTestCodeFromCookie } from "@/lib/meta-capi-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,7 +84,11 @@ export async function POST(req: NextRequest) {
       customData.num_items = 1;
     }
 
+    // Código de "Eventos de prueba" (cookie ms_meta_test, la fija TrackingScripts con ?meta_test=CODE):
+    // el evento se ve en esa pestaña de Events Manager y Meta NO lo cuenta como real.
+    const testCode = metaTestCodeFromCookie(req.headers.get("cookie"));
     const payload = {
+      ...(testCode ? { test_event_code: testCode } : {}),
       data: [
         {
           event_name: eventName,
