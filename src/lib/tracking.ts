@@ -240,10 +240,12 @@ async function leadEventIdFromEmail(email: string): Promise<string> {
   const hex = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
   return `lead_${hex.slice(0, 24)}`;
 }
-// Datos personales que NUNCA van como parámetros del pixel/CAPI custom_data (Meta los
-// rechaza o los marca): se quedan solo en la analítica interna.
+// Datos personales y de SALUD que NUNCA van como parámetros del pixel/CAPI custom_data: Meta
+// clasifica este dataset como salud y SUPRIME el evento entero ("restricted event") si lleva un
+// parámetro como profile=ansiedad. Se quedan solo en la analítica interna (/api/track).
 const PII_PROPS = ["email", "phone", "name", "telefono", "nombre"];
-const stripPii = (p: EventProps): EventProps => Object.fromEntries(Object.entries(p).filter(([k]) => !PII_PROPS.includes(k)));
+const HEALTH_PROPS = ["profile", "feeling", "perfil", "category", "dominant_category", "urgency", "urgency_level", "scores", "score", "symptom", "sintoma", "diagnostico", "psychologist"];
+const stripPii = (p: EventProps): EventProps => Object.fromEntries(Object.entries(p).filter(([k]) => !PII_PROPS.includes(k) && !HEALTH_PROPS.includes(k)));
 
 export function track(event: string, props: EventProps = {}, eventIdOverride?: string): void {
   if (typeof window === "undefined") return;
@@ -323,6 +325,13 @@ function fire(event: string, props: EventProps, eventIdOverride?: string): void 
       w.ttq.track(standard || event, props, { event_id: eventId });
     }
   } catch {}
+
+  // Email dejado en el embudo del 9,99: además del Lead (que Meta suprime en este dataset de salud
+  // mientras siga la restricción), emitimos Contact con id determinista → evento estándar que SÍ
+  // pasa y sirve para optimizar campañas. Mismo id por email → Meta deduplica pixel + CAPI.
+  if (event === "start_matching_analysis" && eventId.startsWith("lead_")) {
+    try { fire("email_capturado", props, eventId.replace(/^lead_/, "contact_")); } catch {}
+  }
 
   // 4. Microsoft Clarity — set custom tags so you can filter sessions
   try {

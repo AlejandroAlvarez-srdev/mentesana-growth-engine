@@ -37,6 +37,12 @@ export const META_STANDARD: Record<string, string> = {
   // view_email_gate/select_slot se quedan como CUSTOM (siguen en analytics_events y en el
   // dataLayer para medir el embudo), pero NO mapean a estándar → así no hay doble conteo.
   start_matching_analysis: "Lead",
+  // Este dataset está en categoría SALUD y Meta SUPRIME en el navegador Lead/Schedule/Purchase/
+  // InitiateCheckout/CompleteRegistration ("restricted event") hasta que se cambie la restricción
+  // en Events Manager. "Contact" SÍ pasa: al dejar el email disparamos también email_capturado →
+  // Contact (lib/tracking lo emite justo después del Lead, con id determinista contact_<hash>) para
+  // tener un evento estándar optimizable YA. Cuando Meta desbloquee Lead, ambos siguen saliendo.
+  email_capturado: "Contact",
   view_match_result: "ViewContent",
   initiate_checkout: "InitiateCheckout",
   purchase: "Purchase",
