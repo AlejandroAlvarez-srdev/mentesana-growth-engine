@@ -22,12 +22,18 @@ export const META_STANDARD: Record<string, string> = {
   page_view: "PageView",
   // Embudo de diagnóstico
   view_landing_diagnostico: "ViewContent",
+  view_home: "ViewContent", // home (/) — vista de producto para Meta (además del PageView)
   click_cta_empezar: "AddToCart",
   start_matching: "ViewContent",
-  // El momento con mas senal antes del pago: deja el correo. Es el Lead.
-  view_email_gate: "Lead",
+  // OJO: Lead y Schedule del embudo 9,99 se disparan SERVER-SIDE (CAPI), NO aquí:
+  //   Lead     → src/app/api/diagnostico-test/route.ts cuando llega el email (sendCAPILead)
+  //   Schedule → src/lib/amelia-create-booking.ts al crear la cita       (sendCAPISchedule)
+  // El pixel client-side solo carga con consentimiento marketing (TrackingScripts) y con
+  // Consent Mode default-denied + ITP se perdía >50% de los Lead/Schedule. El server no
+  // depende del navegador (matchea por email/fbc/fbp) → llegan a Meta "por todo lado".
+  // view_email_gate/select_slot se quedan como CUSTOM (siguen en analytics_events y en el
+  // dataLayer para medir el embudo), pero NO mapean a estándar → así no hay doble conteo.
   view_match_result: "ViewContent",
-  select_slot: "Schedule",
   initiate_checkout: "InitiateCheckout",
   purchase: "Purchase",
   upsell_bono_purchased: "Purchase",

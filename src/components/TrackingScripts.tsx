@@ -2,6 +2,8 @@
 
 import Script from "next/script";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { track } from "@/lib/tracking";
 import { CONSENT_EVENT, readConsent, type ConsentRecord } from "@/lib/cookie-consent";
 import { CONSENT_DEFAULT_JS } from "@/lib/consent-mode";
 
@@ -13,6 +15,7 @@ import { CONSENT_DEFAULT_JS } from "@/lib/consent-mode";
 
 export default function TrackingScripts() {
   const [consent, setConsent] = useState<ConsentRecord | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     setConsent(readConsent());
@@ -26,6 +29,13 @@ export default function TrackingScripts() {
 
   const analytics = !!consent?.categories.analytics;
   const marketing = !!consent?.categories.marketing;
+
+  // Home (/): además del PageView del pixel, mandamos un ViewContent (pixel + CAPI vía
+  // track → view_home) para que Meta registre la vista de producto del home. Solo con
+  // consentimiento marketing; se dispara al entrar al home o al concederse el consent.
+  useEffect(() => {
+    if (marketing && pathname === "/") track("view_home", { page: "home" });
+  }, [pathname, marketing]);
 
   return (
     <>
