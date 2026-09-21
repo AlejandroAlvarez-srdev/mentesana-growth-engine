@@ -258,7 +258,7 @@ export function track(event: string, props: EventProps = {}, eventIdOverride?: s
   fire(event, props, eventIdOverride);
 }
 
-function fire(event: string, props: EventProps, eventIdOverride?: string): void {
+function fire(event: string, props: EventProps, eventIdOverride?: string, opts: { internal?: boolean } = {}): void {
   const w = window as FbqWindow;
   const ab = abDiagVariant();
   if (ab) props = { ...props, ab_diag: ab };
@@ -273,7 +273,7 @@ function fire(event: string, props: EventProps, eventIdOverride?: string): void 
   const eventId = eventIdOverride || `${event}_${getVisitorId()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
   // 0. Internal — Supabase analytics_events table (analítica propia, interés legítimo)
-  sendInternal(event, props);
+  if (opts.internal !== false) sendInternal(event, props);
   // A partir de aquí (pixeles, CAPI, dataLayer) los datos personales NO viajan como parámetros.
   props = stripPii(props);
 
@@ -329,8 +329,13 @@ function fire(event: string, props: EventProps, eventIdOverride?: string): void 
   // Email dejado en el embudo del 9,99: además del Lead (que Meta suprime en este dataset de salud
   // mientras siga la restricción), emitimos Contact con id determinista → evento estándar que SÍ
   // pasa y sirve para optimizar campañas. Mismo id por email → Meta deduplica pixel + CAPI.
+  // Verificado 21 sep 2026: Meta también suprime Contact en este dataset → además mandamos el
+  // CUSTOM email_capturado (los custom sí pasan siempre) para tener el momento "dejó el email"
+  // visible en Events Manager y poder crear una conversión personalizada sobre él.
   if (event === "start_matching_analysis" && eventId.startsWith("lead_")) {
-    try { fire("email_capturado", props, eventId.replace(/^lead_/, "contact_")); } catch {}
+    const hash = eventId.slice("lead_".length);
+    try { fire("email_contacto", props, `contact_${hash}`, { internal: false }); } catch {}
+    try { fire("email_capturado", props, `email_${hash}`, { internal: false }); } catch {}
   }
 
   // 4. Microsoft Clarity — set custom tags so you can filter sessions

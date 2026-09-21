@@ -42,7 +42,10 @@ export const META_STANDARD: Record<string, string> = {
   // en Events Manager. "Contact" SÍ pasa: al dejar el email disparamos también email_capturado →
   // Contact (lib/tracking lo emite justo después del Lead, con id determinista contact_<hash>) para
   // tener un evento estándar optimizable YA. Cuando Meta desbloquee Lead, ambos siguen saliendo.
-  email_capturado: "Contact",
+  // (21 sep, 20 min después: Meta pasó a suprimir también Contact en el navegador. El servidor lo
+  // sigue mandando por CAPI.) email_capturado NO se mapea a propósito: sale como evento CUSTOM, que
+  // es lo único que el pixel deja pasar siempre → crear una conversión personalizada sobre él.
+  email_contacto: "Contact",
   view_match_result: "ViewContent",
   initiate_checkout: "InitiateCheckout",
   purchase: "Purchase",
