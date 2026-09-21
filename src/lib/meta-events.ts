@@ -23,6 +23,7 @@ export const META_STANDARD: Record<string, string> = {
   // Embudo de diagnóstico
   view_landing_diagnostico: "ViewContent",
   view_home: "ViewContent", // home (/) — vista de producto para Meta (además del PageView)
+  view_content: "ViewContent", // cualquier página pública (route change) → ViewContent en todo lado
   click_cta_empezar: "AddToCart",
   start_matching: "ViewContent",
   // OJO: Lead y Schedule del embudo 9,99 se disparan SERVER-SIDE (CAPI), NO aquí:

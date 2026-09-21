@@ -30,11 +30,16 @@ export default function TrackingScripts() {
   const analytics = !!consent?.categories.analytics;
   const marketing = !!consent?.categories.marketing;
 
-  // Home (/): además del PageView del pixel, mandamos un ViewContent (pixel + CAPI vía
-  // track → view_home) para que Meta registre la vista de producto del home. Solo con
-  // consentimiento marketing; se dispara al entrar al home o al concederse el consent.
+  // ViewContent EN TODO LADO: además del PageView del pixel, en cada cambio de ruta de
+  // una página PÚBLICA mandamos un ViewContent (pixel + CAPI vía track → view_home/
+  // view_content) para que Meta registre la vista de contenido de toda la web. Solo con
+  // consentimiento marketing. Se excluyen las herramientas internas (admin/agent/traficker/
+  // flujos), que no son marketing.
   useEffect(() => {
-    if (marketing && pathname === "/") track("view_home", { page: "home" });
+    if (!marketing || !pathname) return;
+    if (/^\/(admin|agent|traficker|flujos)(\/|$)/.test(pathname)) return;
+    if (pathname === "/") track("view_home", { page: "home" });
+    else track("view_content", { path: pathname });
   }, [pathname, marketing]);
 
   return (
