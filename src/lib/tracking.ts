@@ -10,6 +10,7 @@
 
 import { track as vercelTrack } from "@vercel/analytics";
 import { hasConsent } from "@/lib/cookie-consent";
+import { consentBypassed } from "@/lib/consent-bypass";
 import { getUtms } from "@/lib/utm";
 import { META_STANDARD } from "@/lib/meta-events";
 
@@ -277,11 +278,15 @@ function fire(event: string, props: EventProps, eventIdOverride?: string, opts: 
   // A partir de aquí (pixeles, CAPI, dataLayer) los datos personales NO viajan como parámetros.
   props = stripPii(props);
 
+  // Dominios de campaña con bypass del Consent Mode (consent-bypass.ts): CAPI/dataLayer
+  // disparan sin esperar el banner. Scoped por hostname → el sitio principal no cambia.
+  const bp = consentBypassed();
+
   // 0b. Meta Conversion API (server-side) — marketing, requiere consentimiento
-  if (hasConsent("marketing")) sendMetaCAPI(event, props, eventId);
+  if (hasConsent("marketing") || bp) sendMetaCAPI(event, props, eventId);
 
   // 0c. TikTok Events API (server-side) — mismo eventId que el pixel para dedup
-  if (hasConsent("marketing")) sendTiktokCAPI(event, props, eventId);
+  if (hasConsent("marketing") || bp) sendTiktokCAPI(event, props, eventId);
 
   // 1. Vercel Analytics — accepts any custom event
   try { vercelTrack(event, props); } catch {}
@@ -304,7 +309,7 @@ function fire(event: string, props: EventProps, eventIdOverride?: string, opts: 
   // condición: antes iba gated por 'marketing' → GTM cargaba pero NO recibía eventos si el
   // usuario no aceptaba también marketing. Los tags de marketing dentro de GTM (Google
   // Ads/Pixel) deben respetar el consentimiento marketing por su lado (Consent Mode/trigger).
-  if (hasConsent("analytics")) {
+  if (hasConsent("analytics") || bp) {
     try {
       w.dataLayer = w.dataLayer || [];
       w.dataLayer.push({
