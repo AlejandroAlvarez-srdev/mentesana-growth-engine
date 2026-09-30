@@ -63,7 +63,7 @@ export default function EficaciaTab() {
           {/* Embudo */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
             <FunnelStep n={1} color={PURPLE} label="Captadas" sub="pagaron 9,99€" value={t.captadas} pctOfTop={100} />
-            <FunnelStep n={2} color={GOLD} label="Asistidas" sub={data.amelia_ok ? "fueron al diagnóstico" : "Amelia no disponible"} value={data.amelia_ok ? t.asistidas ?? 0 : null} pctOfTop={data.amelia_ok ? t.pct_asist : null} />
+            <FunnelStep n={2} color={GOLD} label="Asistidas" sub={data.amelia_ok ? "marcadas asistidas por soporte" : "Amelia no disponible"} value={data.amelia_ok ? t.asistidas ?? 0 : null} pctOfTop={data.amelia_ok ? t.pct_asist : null} />
             <FunnelStep n={3} color={GREEN} label="Vendidas" sub="compraron terapia" value={t.vendidas} pctOfTop={t.pct_venta} />
           </div>
 
