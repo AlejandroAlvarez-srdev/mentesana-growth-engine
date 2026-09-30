@@ -51,9 +51,25 @@ export async function GET(req: NextRequest) {
   //    Por email guardamos la ÚLTIMA sesión asistida y en (3) exigimos que sea
   //    posterior al pago del 9,99 para no contar sesiones previas del mismo email.
   const attendedAt = new Map<string, number>(); // email → ms de la última sesión asistida
-  const noteAt = (email: string, ms: number) => { if (Number.isFinite(ms) && ms > (attendedAt.get(email) ?? 0)) attendedAt.set(email, ms); };
-  const mysqlUtcMs = (v: string) => Date.parse(String(v).replace(" ", "T") + (String(v).endsWith("Z") ? "" : "Z"));
+  const attendedSrc = new Map<string, "amelia" | "notas">(); // para el ?debug=1
+  const noteAt = (email: string, ms: number, src: "amelia" | "notas") => {
+    if (!Number.isFinite(ms)) return;
+    if (ms > (attendedAt.get(email) ?? 0)) attendedAt.set(email, ms);
+    if (!attendedSrc.has(email) || src === "amelia") attendedSrc.set(email, src);
+  };
+  // mysql2 (pool con timezone +00:00) devuelve DATETIME como objeto Date, no como
+  // texto. Aceptamos Date, ISO o "YYYY-MM-DD HH:MM:SS" (UTC en Amelia).
+  const toMs = (v: unknown): number => {
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === "number") return v;
+    const str = String(v ?? "").trim();
+    if (!str) return NaN;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/.test(str)) return Date.parse(str.replace(" ", "T") + "Z");
+    return Date.parse(str);
+  };
   let ameliaOk = false;
+  let ameliaError: string | null = null;
+  let nAmeliaEmails = 0, nNotas = 0, nNotasMapeadas = 0;
   try {
     const { ameliaQuery, ameliaTable } = await import("@/lib/amelia-db");
     const cb = ameliaTable("customer_bookings"), ab = ameliaTable("appointments"), ub = ameliaTable("users");
@@ -62,7 +78,7 @@ export async function GET(req: NextRequest) {
       const chunk = emails.slice(i, i + 150);
       if (chunk.length === 0) break;
       const ph = chunk.map(() => "?").join(",");
-      const rows = await ameliaQuery<{ email: string; last_att: string }>(
+      const rows = await ameliaQuery<{ email: string; last_att: unknown }>(
         `SELECT LOWER(u.email) AS email, MAX(a.bookingStart) AS last_att
          FROM ${cb} cb
          JOIN ${ab} a ON a.id = cb.appointmentId
@@ -71,7 +87,7 @@ export async function GET(req: NextRequest) {
          GROUP BY LOWER(u.email)`,
         chunk,
       );
-      for (const r of rows) if (r.email && r.last_att) noteAt(String(r.email).toLowerCase(), mysqlUtcMs(r.last_att));
+      for (const r of rows) if (r.email && r.last_att) { nAmeliaEmails++; noteAt(String(r.email).toLowerCase(), toMs(r.last_att), "amelia"); }
     }
     // B) Red de seguridad: asistencias marcadas cuyo sync a Amelia fallara.
     const { data: notes } = await sb
@@ -86,6 +102,7 @@ export async function GET(req: NextRequest) {
       const ms = Date.parse(n.session_date);
       if (Number.isFinite(ms) && ms > (byCustomer.get(n.customer_id) ?? 0)) byCustomer.set(n.customer_id, ms);
     }
+    nNotas = byCustomer.size;
     const ids = [...byCustomer.keys()];
     for (let i = 0; i < ids.length; i += 150) {
       const chunk = ids.slice(i, i + 150);
@@ -94,22 +111,25 @@ export async function GET(req: NextRequest) {
         `SELECT id, LOWER(email) AS email FROM ${ub} WHERE id IN (${chunk.map(() => "?").join(",")})`,
         chunk,
       );
-      for (const r of rows) if (r.email) noteAt(String(r.email).toLowerCase(), byCustomer.get(Number(r.id)) ?? 0);
+      for (const r of rows) if (r.email) { nNotasMapeadas++; noteAt(String(r.email).toLowerCase(), byCustomer.get(Number(r.id)) ?? 0, "notas"); }
     }
     ameliaOk = true;
-  } catch { ameliaOk = false; }
+  } catch (e) { ameliaOk = false; ameliaError = e instanceof Error ? e.message.slice(0, 200) : String(e); }
 
   // 3) Agregado por día de captación (cohorte)
   type Row = { captadas: number; asistidas: number; vendidas: number };
   const byDay = new Map<string, Row>();
-  let tCap = 0, tAsi = 0, tVen = 0;
+  let tCap = 0, tAsi = 0, tVen = 0, tAsiAmelia = 0, tAsiNotas = 0, tAsiAntesDelPago = 0;
   const now = Date.now();
   for (const c of captados) {
     const day = madridDay(c.cap_at);
     const row = byDay.get(day) ?? { captadas: 0, asistidas: 0, vendidas: 0 };
     row.captadas++; tCap++;
     const lastAtt = attendedAt.get(c.email);
-    if (lastAtt !== undefined && lastAtt >= Date.parse(c.cap_at) - HOLGURA_MS) { row.asistidas++; tAsi++; }
+    const capMs = Date.parse(c.cap_at);
+    // Si cap_at no parsea, no aplicamos el filtro temporal antes que perder la asistencia.
+    if (lastAtt !== undefined && (!Number.isFinite(capMs) || lastAtt >= capMs - HOLGURA_MS)) { row.asistidas++; tAsi++; if (attendedSrc.get(c.email) === "amelia") tAsiAmelia++; else tAsiNotas++; }
+    else if (lastAtt !== undefined) tAsiAntesDelPago++;
     const sold = ventas.get(c.email);
     if (sold && sold >= c.cap_at) { row.vendidas++; tVen++; }
     byDay.set(day, row);
@@ -125,9 +145,21 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // ?debug=1 → de dónde sale cada asistida, para cuadrar con Amelia/CRM a mano.
+  const debug = req.nextUrl.searchParams.get("debug") === "1" ? {
+    amelia_error: ameliaError,
+    emails_captados_unicos: new Set(captados.map((c) => c.email)).size,
+    emails_con_pending_en_amelia: nAmeliaEmails,
+    notas_attended_true_en_ventana: nNotas,
+    notas_mapeadas_a_email: nNotasMapeadas,
+    asistidas_por_fuente: { amelia_pending: tAsiAmelia, notas_clinicas: tAsiNotas },
+    descartadas_sesion_anterior_al_pago: tAsiAntesDelPago,
+  } : undefined;
+
   return NextResponse.json({
     days, since,
     amelia_ok: ameliaOk,
+    ...(debug ? { debug } : {}),
     totales: {
       captadas: tCap,
       asistidas: ameliaOk ? tAsi : null,
