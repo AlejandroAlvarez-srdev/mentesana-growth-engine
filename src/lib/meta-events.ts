@@ -58,4 +58,10 @@ export const META_STANDARD: Record<string, string> = {
   view_landing_llamada_inmediata: "ViewContent",
   view_landing_llamada_gratis: "ViewContent",
   llamada_inmediata_registro: "Lead",
+  // Landing "Empieza por la app" (Ad Boost · sesiondecitasms.com/empieza-en-la-app).
+  // El formulario de email ES el punto de medición (la descarga en la store no la ve
+  // el pixel). Dejar el email = Lead (content_name=app). El clic en los botones de store
+  // (app_store_click) se queda como evento CUSTOM → pasa aunque el dataset sea de salud.
+  view_landing_app: "ViewContent",
+  empieza_app_registro: "Lead",
 };
