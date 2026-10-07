@@ -37,9 +37,11 @@ export function captureUtms(): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   const hasAny = KEYS.some((k) => url.searchParams.has(k));
+  let captured: string | null;
+  try { captured = sessionStorage.getItem(STORAGE_KEY); } catch { return; }
 
   // No sobrescribir si ya capturamos esta sesión (last-touch)
-  if (!hasAny && sessionStorage.getItem(STORAGE_KEY)) return;
+  if (!hasAny && captured) return;
 
   const data: UtmParams = {
     landing_page: url.pathname + url.search,
@@ -56,7 +58,7 @@ export function captureUtms(): void {
       const v = url.searchParams.get(k);
       if (v) data[k] = v.slice(0, 120);
     });
-  } else if (!sessionStorage.getItem(STORAGE_KEY) && CLICK_IDS.every((k) => !url.searchParams.has(k))) {
+  } else if (!captured && CLICK_IDS.every((k) => !url.searchParams.has(k))) {
     // Orgánico / directo primera visita — usamos el referrer como best-effort
     data.utm_source = data.referrer && data.referrer !== "direct" ? new URL(data.referrer).hostname : "direct";
     data.utm_medium = "organic";
