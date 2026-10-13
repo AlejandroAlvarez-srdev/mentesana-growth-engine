@@ -102,6 +102,20 @@ export default function Sales999Tab() {
     return { spend: Math.round(spend * 100) / 100, sales, campaigns, unmatched, cac: sales > 0 ? spend / sales : null };
   }, [all, spendMap]);
 
+  // Reconciliación Meta vs UTM (solo campañas del 9,99, excluye B2B por nombre):
+  // lo que REPORTA la plataforma (meta_results) vs lo que CONFIRMA nuestro UTM.
+  const recon = useMemo(() => {
+    const salesByCamp: Record<string, number> = {};
+    for (const r of all) { const c = (r.utm_campaign || "").trim(); if (c) salesByCamp[norm(c)] = (salesByCamp[norm(c)] || 0) + 1; }
+    const isB2B = (name: string) => /\bb2b\b|ms-co|marca blanca|reuni[oó]n|lead ?→|lead->/i.test(name);
+    const rows = (data?.spendByCampaign ?? [])
+      .map((s) => ({ campaign: s.campaign, spend: s.spend, metaResults: s.metaResults, utmSales: salesByCamp[norm(s.campaign)] ?? 0 }))
+      .filter((r) => !isB2B(r.campaign) && (r.utmSales > 0 || r.metaResults > 0))
+      .sort((a, b) => b.spend - a.spend);
+    const tot = rows.reduce((a, r) => ({ spend: a.spend + r.spend, meta: a.meta + r.metaResults, utm: a.utm + r.utmSales }), { spend: 0, meta: 0, utm: 0 });
+    return { rows, spend: tot.spend, meta: tot.meta, utm: tot.utm, roas: tot.spend > 0 ? (tot.utm * 9.99) / tot.spend : null, cobertura: tot.meta > 0 ? (tot.utm / tot.meta) * 100 : null };
+  }, [all, data]);
+
   // Buckets de una dimensión = datos filtrados por TODAS las OTRAS dimensiones (cross-filter),
   // así puedes re-elegir dentro de la misma dimensión sin vaciarla.
   const bucketsFor = (dimKey: DimKey) => {
@@ -223,6 +237,9 @@ export default function Sales999Tab() {
             💶 <strong>CAC</strong> = gasto de Meta de la campaña ÷ ventas 9,99€ de esa campaña (mismo periodo). Se casa por <em>nombre de campaña</em> = <code>utm_campaign</code>. Si una campaña sale <em>«sin gasto casado»</em>, revisa que el <code>utm_campaign</code> del anuncio coincida con el nombre en Meta. El gasto se toma del último sync de Meta.
           </div>
 
+          {/* Reconciliación Meta vs UTM */}
+          <MetaVsUtm recon={recon} />
+
           {/* Feed */}
           <section>
             <strong style={{ fontSize: 13, color: "#1a1a2e" }}>🧾 Ventas 9,99€ {anyFilter ? "(filtradas)" : ""} <span style={{ fontWeight: 400, color: "#888", fontSize: 11.5 }}>· {recentF.length}</span></strong>
@@ -331,6 +348,54 @@ function Pipeline({ dim, rows, active, onPick, cacFor }: { dim: (typeof DIMS)[nu
         })}
       </div>
     </div>
+  );
+}
+
+// Reconciliación Meta vs UTM: lo que reporta la plataforma vs lo confirmado por UTM.
+function MetaVsUtm({ recon }: { recon: { rows: { campaign: string; spend: number; metaResults: number; utmSales: number }[]; spend: number; meta: number; utm: number; roas: number | null; cobertura: number | null } }) {
+  if (!recon.rows.length) return null;
+  const th: React.CSSProperties = { padding: "4px 6px", fontWeight: 700 };
+  const td: React.CSSProperties = { padding: "4px 6px" };
+  return (
+    <section style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12, padding: 12 }}>
+      <strong style={{ fontSize: 13, color: "#1a1a2e" }}>⚖️ Meta vs UTM · reconciliación de ventas 9,99€</strong>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, margin: "10px 0 12px" }}>
+        <Kpi label="Gasto (campañas 9,99)" value={`${Math.round(recon.spend).toLocaleString("es-ES")} €`} />
+        <Kpi label="Meta reporta" value={String(recon.meta)} />
+        <Kpi label="UTM confirma" value={String(recon.utm)} />
+        <Kpi label="Cobertura UTM/Meta" value={recon.cobertura != null ? `${recon.cobertura.toFixed(0)}%` : "—"} />
+        <Kpi label="ROAS 9,99 blended" value={recon.roas != null ? `${recon.roas.toFixed(2)}x` : "—"} />
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead>
+            <tr style={{ textAlign: "right", color: "#888", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.3 }}>
+              <th style={{ ...th, textAlign: "left" }}>Campaña</th>
+              <th style={th}>Gasto</th>
+              <th style={th} title="Conversiones que atribuye Meta">Meta</th>
+              <th style={th} title="Ventas 9,99€ confirmadas por UTM">UTM</th>
+              <th style={th}>CAC Meta</th>
+              <th style={th}>CAC UTM</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recon.rows.map((r) => (
+              <tr key={r.campaign} style={{ borderTop: "1px solid rgba(0,0,0,0.05)", textAlign: "right" }}>
+                <td style={{ ...td, textAlign: "left", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.campaign}>{r.campaign}</td>
+                <td style={td}>{Math.round(r.spend).toLocaleString("es-ES")}€</td>
+                <td style={{ ...td, color: "#2563eb", fontWeight: 800 }}>{r.metaResults}</td>
+                <td style={{ ...td, color: "#6A178C", fontWeight: 800 }}>{r.utmSales}</td>
+                <td style={td}>{r.metaResults > 0 ? `${(r.spend / r.metaResults).toFixed(1)}€` : "—"}</td>
+                <td style={td}>{r.utmSales > 0 ? `${(r.spend / r.utmSales).toFixed(1)}€` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, lineHeight: 1.5 }}>
+        <strong>Meta</strong> = conversiones que atribuye la plataforma (ventana 7 días clic / 1 día view + view-through). <strong>UTM</strong> = ventas 9,99€ que llegan al checkout con etiqueta de pago. La diferencia es sobre todo <em>metodología</em>: quien ve o clica un anuncio y vuelve <em>directo</em> o por Google a comprar cuenta como «directo» para el UTM y como «paid» para Meta — no es un fallo del panel. El <strong>ROAS blended</strong> es ingreso 9,99 ÷ gasto; el retorno real llega con los bonos.
+      </div>
+    </section>
   );
 }
 
