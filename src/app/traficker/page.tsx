@@ -13,6 +13,7 @@ import Sales999Tab from "./_components/Sales999Tab";
 import CampaignAITab from "./_components/CampaignAITab";
 import AprendizajesTab from "./_components/AprendizajesTab";
 import EficaciaTab from "./_components/EficaciaTab";
+import LeadsEmbudoTab from "./_components/LeadsEmbudoTab";
 import { clasificarCampana, EMBUDO_LABEL, type Embudo } from "@/lib/meta-embudos";
 
 const PURPLE = "#6A178C";
@@ -211,6 +212,7 @@ export default function TrafickerDashboard() {
               { key: "extras", label: "Extras", emoji: "💡" },
               { key: "brief", label: "Daily brief", emoji: "📨" },
               { key: "ventas999", label: "Ventas 9,99€", emoji: "🧾" },
+              { key: "leads", label: "Leads por embudo", emoji: "🧲" },
               { key: "eficacia", label: "Eficacia lead", emoji: "🎯" },
               { key: "campaign_ai", label: "IA campañas", emoji: "🤖" },
               { key: "aprendizajes", label: "Aprendizajes", emoji: "🧭" },
@@ -412,6 +414,8 @@ export default function TrafickerDashboard() {
             </section>
           )}
           {tab === "ventas999" && <Sales999Tab />}
+
+          {tab === "leads" && <LeadsEmbudoTab />}
 
           {tab === "campaign_ai" && <CampaignAITab accountId={selectedAcc} />}
 
