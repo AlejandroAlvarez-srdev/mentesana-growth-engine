@@ -27,6 +27,7 @@ const DIMS = [
   { key: "utm_content", label: "Audiencia", icon: "👥", color: "#0891b2", hint: "" },
   { key: "utm_term", label: "Ad (anuncio)", icon: "🖼️", color: "#db2777", hint: "" },
   { key: "utm_source", label: "Ubicación", icon: "📍", color: "#2563eb", hint: "ej. IG Stories" },
+  { key: "landing", label: "Landing", icon: "🔗", color: "#0d9488", hint: "página de entrada de la venta" },
 ] as const;
 type DimKey = (typeof DIMS)[number]["key"];
 
@@ -65,7 +66,12 @@ export default function Sales999Tab() {
   }, [mode, days, date]);
 
   const all = data?.recent ?? [];
-  const val = (r: Recent, k: DimKey) => (r[k] || "").trim() || (k === "utm_medium" ? "organic" : "(sin dato)");
+  // La landing se guarda con la query string completa (…?utm_…) → agrupamos por la RUTA
+  // (sin query) para no fragmentar la misma página en decenas de buckets.
+  const val = (r: Recent, k: DimKey) => {
+    const raw = k === "landing" ? (r.landing || "").split("?")[0] : (r[k] || "");
+    return raw.trim() || (k === "utm_medium" ? "organic" : "(sin dato)");
+  };
   const activeFilters = useMemo(() => Object.entries(filters).filter(([, v]) => !!v) as [DimKey, string][], [filters]);
 
   // Feed totalmente filtrado (aplica TODOS los filtros activos).
@@ -234,6 +240,7 @@ export default function Sales999Tab() {
                     {r.utm_content && <Tag title="Audiencia" color="#0891b2">👥 {r.utm_content}</Tag>}
                     {r.utm_term && <Tag title="Ad" color="#db2777">🖼️ {r.utm_term}</Tag>}
                     {r.utm_source && <Tag title="Ubicación" color="#2563eb">📍 {r.utm_source}</Tag>}
+                    {r.landing && <Tag title="Landing" color="#0d9488">🔗 {r.landing.split("?")[0]}</Tag>}
                     <span style={{ fontSize: 11.5, fontWeight: 800, color: "#065f46" }}>{r.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</span>
                   </div>
                 </div>
