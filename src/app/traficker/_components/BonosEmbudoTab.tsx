@@ -49,12 +49,17 @@ export default function BonosEmbudoTab() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true); setErr(null);
-    fetch(`/api/traficker/bonos-embudo?from=${range.from}&to=${range.to}`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(d.error ?? `HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
+    let alive = true;
+    queueMicrotask(() => {
+      if (!alive) return;
+      setLoading(true); setErr(null);
+      fetch(`/api/traficker/bonos-embudo?from=${range.from}&to=${range.to}`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(d.error ?? `HTTP ${r.status}`))))
+        .then((d) => { if (alive) setData(d); })
+        .catch((e) => { if (alive) setErr(String(e)); })
+        .finally(() => { if (alive) setLoading(false); });
+    });
+    return () => { alive = false; };
   }, [range]);
 
   const apply = (r: { from: string; to: string }) => { setDraft(r); setRange(r); };
