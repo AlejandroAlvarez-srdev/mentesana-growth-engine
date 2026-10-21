@@ -232,6 +232,15 @@ function abLandingVariant(): string | undefined {
   return m?.[1];
 }
 
+// Variante del 4º A/B test ("directo": el botón de la landing entra en la pregunta 1
+// del test en vez de en la portada) — la fija proxy.ts en la cookie ms_ab_directo.
+// Persiste landing→test→checkout; se estampa también en metadata de Stripe.
+function abDirectoVariant(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const m = document.cookie.match(/(?:^|;\s*)ms_ab_directo=([AB])/);
+  return m?.[1];
+}
+
 // event_id determinista para un Lead identificado por email: el MISMO que calcula el
 // servidor en /api/diagnostico-test (lead_<sha256(email en minúsculas)[:24]>) → Meta
 // deduplica pixel + CAPI del navegador + CAPI del servidor en un solo Lead.
@@ -267,6 +276,8 @@ function fire(event: string, props: EventProps, eventIdOverride?: string, opts: 
   if (abW) props = { ...props, ab_warming: abW };
   const abL = abLandingVariant();
   if (abL) props = { ...props, ab_landing: abL };
+  const abD = abDirectoVariant();
+  if (abD) props = { ...props, ab_directo: abD };
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair. Se puede
   // pasar un override para deduplicar con un CAPI disparado desde el servidor

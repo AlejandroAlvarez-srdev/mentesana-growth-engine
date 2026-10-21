@@ -80,6 +80,9 @@ export async function registrarCompraEnAnalytics(c: CompraAnalytics): Promise<vo
       psychologist: md.psychologist ?? "",
       source: md.source ?? "",
       ab_diag: md.ab_diag ?? "",
+      // A/B "directo" (landing → pregunta 1): así el embudo por variante llega
+      // hasta el pago en analytics_events sin cruzar con payments.
+      ab_directo: md.ab_directo ?? "",
       // Marca de dónde viene la fila: no la escribió el navegador.
       origen: "stripe_webhook",
     },

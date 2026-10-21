@@ -69,11 +69,30 @@ export function proxy(request: NextRequest) {
     // inicial ya es el correcto: sin flash, sin CLS.
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-ab-landing", variant);
+
+    // ── A/B TEST #4 "directo": el botón de la landing → portada del test (A) vs
+    // pregunta 1 directa con ?directo=1 (B). Estudio /interno/subir-el-082 (oct-2026):
+    // la entrada directa al test paga 4,4 % por sesión y la portada 0,64 %. Reparto
+    // 50/50 sticky por cookie ms_ab_directo (path "/": persiste landing → test →
+    // checkout). page.tsx la lee por header de request en SSR y cambia el ctaBase;
+    // tracking.ts la cuelga como ab_directo en cada evento; /api/create-checkout la
+    // estampa en Stripe → pago por variante. Override QA: ?flujo=A|B.
+    const overrideDirecto = url.searchParams.get("flujo");
+    const prevDirecto = request.cookies.get("ms_ab_directo")?.value;
+    const directo: "A" | "B" = overrideDirecto === "A" || overrideDirecto === "B"
+      ? overrideDirecto
+      : prevDirecto === "A" || prevDirecto === "B" ? prevDirecto : (Math.random() < 0.5 ? "A" : "B");
+    requestHeaders.set("x-ab-directo", directo);
+
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     if (variant !== prev) {
       res.cookies.set("ms_ab_landing", variant, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
     }
+    if (directo !== prevDirecto) {
+      res.cookies.set("ms_ab_directo", directo, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
+    }
     res.headers.set("x-ab-landing", variant);
+    res.headers.set("x-ab-directo", directo);
     return res;
   }
 
