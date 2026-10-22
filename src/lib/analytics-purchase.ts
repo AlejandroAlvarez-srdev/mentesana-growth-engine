@@ -83,6 +83,8 @@ export async function registrarCompraEnAnalytics(c: CompraAnalytics): Promise<vo
       // A/B "directo" (landing → pregunta 1): así el embudo por variante llega
       // hasta el pago en analytics_events sin cruzar con payments.
       ab_directo: md.ab_directo ?? "",
+      // A/B "una pantalla" (psicóloga + hora + pago juntos): match → pago por variante.
+      ab_pago: md.ab_pago ?? "",
       // Marca de dónde viene la fila: no la escribió el navegador.
       origen: "stripe_webhook",
     },

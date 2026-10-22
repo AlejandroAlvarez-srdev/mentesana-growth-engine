@@ -37,7 +37,10 @@ export function proxy(request: NextRequest) {
     res.headers.set("x-ab-diag", variant);
     // Cuando servimos el funnel directo (variante B de este test) asignamos también
     // la variante del 2º test: "calentamiento" del match (B) vs match clásico (A).
-    if (variant === "B") applyWarming(res, request, resolveWarming(url));
+    if (variant === "B") {
+      applyWarming(res, request, resolveWarming(url));
+      applyPago(res, request, resolvePago(url, request));
+    }
     return res;
   }
 
@@ -48,6 +51,7 @@ export function proxy(request: NextRequest) {
   if (url.pathname === "/test-diagnostico") {
     const res = NextResponse.next();
     applyWarming(res, request, resolveWarming(url));
+    applyPago(res, request, resolvePago(url, request));
     return res;
   }
 
@@ -93,6 +97,9 @@ export function proxy(request: NextRequest) {
     }
     res.headers.set("x-ab-landing", variant);
     res.headers.set("x-ab-directo", directo);
+    // El 5º test (pago en una pantalla) también se asigna aquí para que la cookie ya
+    // exista cuando la persona pase al test y la lectura landing → pago sea una sola.
+    applyPago(res, request, resolvePago(url, request));
     return res;
   }
 
@@ -115,6 +122,30 @@ function applyWarming(res: NextResponse, request: NextRequest, variant: "A" | "B
     res.cookies.set("ms_ab_warming", variant, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
   }
   res.headers.set("x-ab-warming", variant);
+}
+
+// ── A/B TEST #5 "una pantalla": psicóloga + hora + pago en una sola pantalla (B) vs
+// las tres pantallas de hoy, match → calendario → pago (A). Acción 2 del estudio
+// /interno/subir-el-082 (oct-2026): hoy paga el 22 % de quienes ven a su psicóloga;
+// objetivo ≥ 30 %. Reparto 50/50 sticky por cookie ms_ab_pago (path "/", 90 días) que
+// se fija en /test-diagnostico, en /diagnostico (cuando sirve el test) y en la landing.
+// DiagnosticoMatching la lee en cliente al llegar a la fase de hora (PagoUnaPantalla);
+// tracking.ts la cuelga como ab_pago en cada evento; /api/create-checkout la estampa
+// en Stripe → pago por variante. Override QA: ?pantalla=A|B.
+function resolvePago(url: URL, request: NextRequest): "A" | "B" {
+  const override = url.searchParams.get("pantalla");
+  if (override === "A" || override === "B") return override;
+  const prev = request.cookies.get("ms_ab_pago")?.value;
+  if (prev === "A" || prev === "B") return prev;
+  return Math.random() < 0.5 ? "A" : "B";
+}
+
+function applyPago(res: NextResponse, request: NextRequest, variant: "A" | "B") {
+  const prev = request.cookies.get("ms_ab_pago")?.value;
+  if (variant !== prev) {
+    res.cookies.set("ms_ab_pago", variant, { path: "/", maxAge: 60 * 60 * 24 * 90, sameSite: "lax" });
+  }
+  res.headers.set("x-ab-pago", variant);
 }
 
 export const config = {
