@@ -7,7 +7,7 @@ import { track } from "@/lib/tracking";
 import { CONSENT_EVENT, readConsent, type ConsentRecord } from "@/lib/cookie-consent";
 import { CONSENT_DEFAULT_JS, updateConsentMode } from "@/lib/consent-mode";
 import { consentBypassed } from "@/lib/consent-bypass";
-import { isLogopediaDemoPath } from "@/lib/productos-999";
+import { isLogopediaPath } from "@/lib/productos-999";
 
 // Carga condicional de scripts de tracking según consentimiento RGPD/AEPD.
 // - Hasta que el usuario decide, NO se inyecta nada (ni GTM, ni Pixel, ni TikTok, ni Clarity).
@@ -19,7 +19,7 @@ export default function TrackingScripts() {
   const [consent, setConsent] = useState<ConsentRecord | null>(null);
   const [bypass, setBypass] = useState(false);
   const pathname = usePathname();
-  const isDemo = isLogopediaDemoPath(pathname || "");
+  const isDemo = isLogopediaPath(pathname || "");
 
   useEffect(() => {
     setConsent(readConsent());
