@@ -267,6 +267,8 @@ const stripPii = (p: EventProps): EventProps => Object.fromEntries(Object.entrie
 
 export function track(event: string, props: EventProps = {}, eventIdOverride?: string): void {
   if (typeof window === "undefined") return;
+  // The logopedia prototype must not create production funnel/marketing events.
+  if (/^\/(?:logopedia|test-logopedia)(?:\/|$)/.test(window.location.pathname)) return;
   // Lead con email y sin id explícito → id determinista (async por SubtleCrypto) y luego disparamos.
   const email = typeof props.email === "string" ? props.email : "";
   if (!eventIdOverride && META_STANDARD[event] === "Lead" && email && typeof crypto !== "undefined" && crypto.subtle) {
