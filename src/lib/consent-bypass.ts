@@ -8,6 +8,9 @@
 export const CONSENT_BYPASS_HOSTS = new Set<string>([
   "sesiondecitasms.com",
   "www.sesiondecitasms.com",
+  // 27-oct-2026: dominio de campaña del diagnóstico 9,99 (alias del sitio principal).
+  "diagnosticoms.app",
+  "www.diagnosticoms.app",
 ]);
 
 export function consentBypassed(): boolean {
