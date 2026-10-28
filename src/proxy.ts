@@ -55,6 +55,24 @@ export function proxy(request: NextRequest) {
     return res;
   }
 
+  // ── LOGOPEDIA (28-oct-2026): mismo embudo que el diagnóstico con otro producto ──
+  // /test-logopedia es DiagnosticoMatching con producto=logopedia → hereda el A/B de
+  // una pantalla (ms_ab_pago) y la capa de calentamiento, igual que /test-diagnostico.
+  // Las landings /logopedia y /logopedia/<segmento> fijan ms_ab_pago como hace la del
+  // diagnóstico, para que la lectura landing → pago sea una sola. Logopedia nace con
+  // portada (lo que gana en el A/B "directo"): no reparte ms_ab_directo.
+  if (url.pathname === "/test-logopedia") {
+    const res = NextResponse.next();
+    applyWarming(res, request, resolveWarming(url));
+    applyPago(res, request, resolvePago(url, request));
+    return res;
+  }
+  if (url.pathname === "/logopedia" || /^\/logopedia\/(infantil|adultos|voz|lectoescritura|fluidez)$/.test(url.pathname)) {
+    const res = NextResponse.next();
+    applyPago(res, request, resolvePago(url, request));
+    return res;
+  }
+
   // ── A/B TEST #3: landing /por-que-diagnostico — challenger (B) vs control (A) ──
   // Reparto 50/50 sticky por cookie ms_ab_landing; page.tsx lee la cookie en SSR y
   // renderiza A o B → sin flash/CLS. Los BOTS (sin cookie) caen siempre en A (el

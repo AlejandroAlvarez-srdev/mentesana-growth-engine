@@ -13,6 +13,7 @@ import { hasConsent } from "@/lib/cookie-consent";
 import { consentBypassed } from "@/lib/consent-bypass";
 import { getUtms } from "@/lib/utm";
 import { META_STANDARD } from "@/lib/meta-events";
+import { isLogopediaPath } from "@/lib/productos-999";
 
 type EventProps = Record<string, string | number | boolean>;
 
@@ -267,8 +268,6 @@ const stripPii = (p: EventProps): EventProps => Object.fromEntries(Object.entrie
 
 export function track(event: string, props: EventProps = {}, eventIdOverride?: string): void {
   if (typeof window === "undefined") return;
-  // The logopedia prototype must not create production funnel/marketing events.
-  if (/^\/(?:logopedia|test-logopedia)(?:\/|$)/.test(window.location.pathname)) return;
   // Lead con email y sin id explícito → id determinista (async por SubtleCrypto) y luego disparamos.
   const email = typeof props.email === "string" ? props.email : "";
   if (!eventIdOverride && META_STANDARD[event] === "Lead" && email && typeof crypto !== "undefined" && crypto.subtle) {
@@ -290,6 +289,10 @@ function fire(event: string, props: EventProps, eventIdOverride?: string, opts: 
   if (abD) props = { ...props, ab_directo: abD };
   const abP = abPagoVariant();
   if (abP) props = { ...props, ab_pago: abP };
+  // Producto del embudo 9,99: logopedia comparte el embudo del diagnóstico (mismas
+  // rutas de API, mismos eventos) y se distingue en analytics_events por esta prop.
+  // Sin prop = diagnóstico u otra página (así el SQL histórico del 9,99 no cambia).
+  if (isLogopediaPath(window.location.pathname)) props = { ...props, producto: "logopedia" };
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair. Se puede
   // pasar un override para deduplicar con un CAPI disparado desde el servidor

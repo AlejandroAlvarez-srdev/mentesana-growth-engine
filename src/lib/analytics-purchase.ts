@@ -85,6 +85,9 @@ export async function registrarCompraEnAnalytics(c: CompraAnalytics): Promise<vo
       ab_directo: md.ab_directo ?? "",
       // A/B "una pantalla" (psicóloga + hora + pago juntos): match → pago por variante.
       ab_pago: md.ab_pago ?? "",
+      // Producto del embudo 9,99 (metadata.producto de create-checkout): "diagnostico"
+      // o "logopedia"; vacío en compras que no vienen de ese checkout (bonos, ebooks).
+      producto: md.producto ?? "",
       // Marca de dónde viene la fila: no la escribió el navegador.
       origen: "stripe_webhook",
     },

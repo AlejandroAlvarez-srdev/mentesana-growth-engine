@@ -7,7 +7,6 @@ import { track } from "@/lib/tracking";
 import { CONSENT_EVENT, readConsent, type ConsentRecord } from "@/lib/cookie-consent";
 import { CONSENT_DEFAULT_JS, updateConsentMode } from "@/lib/consent-mode";
 import { consentBypassed } from "@/lib/consent-bypass";
-import { isLogopediaPath } from "@/lib/productos-999";
 
 // Carga condicional de scripts de tracking según consentimiento RGPD/AEPD.
 // - Hasta que el usuario decide, NO se inyecta nada (ni GTM, ni Pixel, ni TikTok, ni Clarity).
@@ -19,7 +18,6 @@ export default function TrackingScripts() {
   const [consent, setConsent] = useState<ConsentRecord | null>(null);
   const [bypass, setBypass] = useState(false);
   const pathname = usePathname();
-  const isDemo = isLogopediaPath(pathname || "");
 
   useEffect(() => {
     setConsent(readConsent());
@@ -42,8 +40,8 @@ export default function TrackingScripts() {
   }, []);
 
   // Con bypass tratamos analytics/marketing como concedidos (solo en ese dominio).
-  const analytics = !isDemo && (!!consent?.categories.analytics || bypass);
-  const marketing = !isDemo && (!!consent?.categories.marketing || bypass);
+  const analytics = !!consent?.categories.analytics || bypass;
+  const marketing = !!consent?.categories.marketing || bypass;
 
   // QA de Meta: abre cualquier página con ?meta_test=CODE (el código de "Eventos de prueba" de
   // Events Manager) y durante 1 h los eventos SERVER-SIDE (CAPI) llevan test_event_code → se ven
