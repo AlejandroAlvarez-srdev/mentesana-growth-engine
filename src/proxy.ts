@@ -99,11 +99,14 @@ export function proxy(request: NextRequest) {
     // checkout). page.tsx la lee por header de request en SSR y cambia el ctaBase;
     // tracking.ts la cuelga como ab_directo en cada evento; /api/create-checkout la
     // estampa en Stripe → pago por variante. Override QA: ?flujo=A|B.
+    // CERRADO 28-oct-2026 a favor de A (portada): en 8 días B metió al doble de gente
+    // en el test (136 vs 71) pero pagó la mitad (3 vs 8 en Stripe; 0,5 % vs 1,3 % de
+    // las sesiones), misma lectura que el corte del 25-oct. Todo el mundo va a A y la
+    // cookie se reescribe a A para quien aún tuviera B; ?flujo=B sigue sirviendo
+    // para QA de la pregunta 1 directa.
     const overrideDirecto = url.searchParams.get("flujo");
     const prevDirecto = request.cookies.get("ms_ab_directo")?.value;
-    const directo: "A" | "B" = overrideDirecto === "A" || overrideDirecto === "B"
-      ? overrideDirecto
-      : prevDirecto === "A" || prevDirecto === "B" ? prevDirecto : (Math.random() < 0.5 ? "A" : "B");
+    const directo: "A" | "B" = overrideDirecto === "A" || overrideDirecto === "B" ? overrideDirecto : "A";
     requestHeaders.set("x-ab-directo", directo);
 
     const res = NextResponse.next({ request: { headers: requestHeaders } });
