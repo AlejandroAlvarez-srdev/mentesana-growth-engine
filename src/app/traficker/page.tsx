@@ -8,6 +8,7 @@ import DateRangePicker, { type DateRange, presetToRange } from "./_components/Da
 import MonthlyEvolutionChart, { type Metric, type MonthPoint } from "./_components/MonthlyEvolutionChart";
 import AssignTaskModal from "./_components/AssignTaskModal";
 import ActiveAdsStrip from "./_components/ActiveAdsStrip";
+import AppMetricsBlock from "./_components/AppMetricsBlock";
 import ClinicalInsightsTab from "./_components/ClinicalInsightsTab";
 import Sales999Tab from "./_components/Sales999Tab";
 import CampaignAITab from "./_components/CampaignAITab";
@@ -236,6 +237,8 @@ export default function TrafickerDashboard() {
                 </div>
                 {loadingDash && <span style={{ fontSize: 11, color: "#94a3b8" }}>actualizando…</span>}
               </div>
+              {/* Bloque App (arriba del todo, pedido por el CTO el 29-oct-2026): datos propios + SDK de Meta */}
+              <AppMetricsBlock days={dashDays} />
               <ActiveAdsStrip accountId={selectedAcc} />
               {dashboard?.totals && (
                 <>
