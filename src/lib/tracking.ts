@@ -13,7 +13,7 @@ import { hasConsent } from "@/lib/cookie-consent";
 import { consentBypassed } from "@/lib/consent-bypass";
 import { getUtms } from "@/lib/utm";
 import { META_STANDARD } from "@/lib/meta-events";
-import { isLogopediaPath } from "@/lib/productos-999";
+import { productoDesdePath } from "@/lib/productos-999";
 
 type EventProps = Record<string, string | number | boolean>;
 
@@ -292,7 +292,12 @@ function fire(event: string, props: EventProps, eventIdOverride?: string, opts: 
   // Producto del embudo 9,99: logopedia comparte el embudo del diagnóstico (mismas
   // rutas de API, mismos eventos) y se distingue en analytics_events por esta prop.
   // Sin prop = diagnóstico u otra página (así el SQL histórico del 9,99 no cambia).
-  if (isLogopediaPath(window.location.pathname)) props = { ...props, producto: "logopedia" };
+  const producto = productoDesdePath(window.location.pathname);
+  if (producto.slug !== "diagnostico") props = { ...props, producto: producto.slug };
+  if (producto.slug === "nutricion") {
+    const seg = new URLSearchParams(window.location.search).get("seg") || window.location.pathname.split("/")[2];
+    props = { ...props, seg: seg && Object.hasOwn(producto.tema, seg) ? seg : "general" };
+  }
 
   // Shared event_id — pixel + CAPI send it so Meta dedupes the pair. Se puede
   // pasar un override para deduplicar con un CAPI disparado desde el servidor

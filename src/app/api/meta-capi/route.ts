@@ -6,6 +6,7 @@ import { createHash } from "crypto";
 // rompía la dedup de los eventos de embudo.
 import { META_STANDARD } from "@/lib/meta-events";
 import { metaTestCodeFromCookie } from "@/lib/meta-capi-server";
+import { productoDesdeSlug } from "@/lib/productos-999";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,21 +69,23 @@ export async function POST(req: NextRequest) {
 
     // Build custom_data with maximum info for attribution
     const customData: Record<string, unknown> = { ...props };
+    const producto = productoDesdeSlug(props.producto);
     if (eventName === "Purchase" && props.value) {
       customData.value = props.value;
       customData.currency = props.currency || "EUR";
       customData.content_type = "product";
-      customData.content_name = "Primera sesión psicología";
+      customData.content_name = producto.slug === "diagnostico" ? "Primera sesión psicología" : producto.metaContentName;
     }
     if (eventName === "ViewContent") {
       customData.content_type = "product";
-      customData.content_name = props.psychologist || "Psicóloga match";
+      customData.content_name = props.psychologist || (producto.slug === "diagnostico" ? "Psicóloga match" : producto.metaContentName);
     }
     if (eventName === "InitiateCheckout") {
       customData.value = props.value || 9.99;
       customData.currency = "EUR";
       customData.num_items = 1;
     }
+    if (producto.slug !== "diagnostico") customData.content_category = producto.metaCategory;
 
     // Código de "Eventos de prueba" (cookie ms_meta_test, la fija TrackingScripts con ?meta_test=CODE):
     // el evento se ve en esa pestaña de Events Manager y Meta NO lo cuenta como real.

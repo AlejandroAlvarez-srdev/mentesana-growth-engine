@@ -61,13 +61,13 @@ export function proxy(request: NextRequest) {
   // Las landings /logopedia y /logopedia/<segmento> fijan ms_ab_pago como hace la del
   // diagnóstico, para que la lectura landing → pago sea una sola. Logopedia nace con
   // portada (lo que gana en el A/B "directo"): no reparte ms_ab_directo.
-  if (url.pathname === "/test-logopedia") {
+  if (url.pathname === "/test-logopedia" || url.pathname === "/test-nutricion") {
     const res = NextResponse.next();
     applyWarming(res, request, resolveWarming(url));
     applyPago(res, request, resolvePago(url, request));
     return res;
   }
-  if (url.pathname === "/logopedia" || /^\/logopedia\/(infantil|adultos|voz|lectoescritura|fluidez)$/.test(url.pathname)) {
+  if (/^\/nutricion(?:\/|$)/.test(url.pathname) || url.pathname === "/logopedia" || /^\/logopedia\/(infantil|adultos|voz|lectoescritura|fluidez)$/.test(url.pathname)) {
     const res = NextResponse.next();
     applyPago(res, request, resolvePago(url, request));
     return res;
