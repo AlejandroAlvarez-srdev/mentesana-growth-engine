@@ -37,7 +37,36 @@ export async function getTraficker(req?: NextRequest): Promise<TrafickerProfile 
   const store = req ? req.cookies : await cookies();
   const token = store.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return parseAndVerify(token);
+  const p = parseAndVerify(token);
+  if (!p) return null;
+  if (!(await isActiveTraficker(p.email))) return null;
+  return p;
+}
+
+// La cookie vive 24 h y solo lleva firma: si se desactiva a alguien en `trafickers`
+// (la agencia, 30-oct-2026) hay que cortarle también las sesiones ya abiertas.
+// Comprueba `trafickers.active` con caché de 60 s por instancia; si la BD no responde, deja pasar.
+const activeCache = new Map<string, { active: boolean; until: number }>();
+async function isActiveTraficker(email: string | undefined): Promise<boolean> {
+  const e = (email ?? "").trim().toLowerCase();
+  if (!e) return false;
+  const now = Date.now();
+  const hit = activeCache.get(e);
+  if (hit && hit.until > now) return hit.active;
+  try {
+    const url = process.env.NEXT_PUBLIC_BLOG_SUPABASE_URL;
+    const key = process.env.BLOG_SUPABASE_SERVICE_KEY;
+    if (!url || !key) return true;
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(url, key, { auth: { persistSession: false } });
+    const { data, error } = await sb.from("trafickers").select("active").eq("email", e).maybeSingle();
+    if (error) return true;
+    const active = data?.active === true;
+    activeCache.set(e, { active, until: now + 60_000 });
+    return active;
+  } catch {
+    return true;
+  }
 }
 
 export async function requireTraficker(req: NextRequest) {
