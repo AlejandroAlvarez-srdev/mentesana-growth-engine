@@ -3,7 +3,15 @@
 <p align="center"><img src="https://img.shields.io/badge/Next.js_16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js 16"> <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"> <img src="https://img.shields.io/badge/Meta_CAPI-0467DF?style=for-the-badge&logo=meta&logoColor=white" alt="Meta CAPI"> <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase"> <img src="https://img.shields.io/badge/Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude"> <img src="https://img.shields.io/badge/119_commits-6a178c?style=for-the-badge" alt="119 commits"></p>
 
 <h1 align="center">Mente Sana Growth Engine</h1>
+<p align="center"><sub>Extracted from the private Mente Sana production monorepo with its real commit history: <b>120 commits, Apr 2026 – Nov 2026</b>. Secrets and personal data were removed before publishing.</sub></p>
 <!-- /header -->
+
+## Latest (Nov 2026)
+
+- **Experiment statistics** — `src/lib/ab-stats.ts` (+ tests): two-proportion z-test, Wilson intervals, exact Bayesian P(B>A), sample-ratio-mismatch check and Fleiss sample size, behind a verdict that refuses to call a winner before the planned sample.
+- **Transactional outbox for Conversions API** — `src/lib/event-outbox.ts` (+ tests): failed server-side Purchase events are queued and retried with backoff (1m → 12h, dead after 6), keeping the original `event_id` and `event_time` so Meta deduplicates instead of double counting.
+- **Recurring revenue made visible** — `src/lib/stripe-invoices.ts` (+ tests): instalment invoices were never stored, so ~17% of revenue was invisible to ROAS. Idempotent upsert by invoice id from the webhook plus a backfill.
+
 
 Experimentation, attribution and conversion tracking for a paid-acquisition funnel in online mental health, plus the internal dashboard the media buyer uses to run it.
 
