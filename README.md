@@ -8,6 +8,7 @@
 
 ## Latest (Nov 2026)
 
+- **Payment links that fulfil themselves** — `src/lib/vuelve-1999.ts`, `vuelve-1999-core.ts` (+ tests): A WhatsApp campaign offered lapsed patients one session with their own psychologist for €19.99 through a Stripe payment link. A cron job matches the paid checkouts, claims each one atomically and creates a one-session package in the booking system, tied to the psychologist from the patient's last attended session. Then it tells the team to agree the date. It is safe to run twice and leaves no manual step between payment and booking.
 - **Experiment statistics** — `src/lib/ab-stats.ts` (+ tests): two-proportion z-test, Wilson intervals, exact Bayesian P(B>A), sample-ratio-mismatch check and Fleiss sample size, behind a verdict that refuses to call a winner before the planned sample.
 - **Transactional outbox for Conversions API** — `src/lib/event-outbox.ts` (+ tests): failed server-side Purchase events are queued and retried with backoff (1m → 12h, dead after 6), keeping the original `event_id` and `event_time` so Meta deduplicates instead of double counting.
 - **Recurring revenue made visible** — `src/lib/stripe-invoices.ts` (+ tests): instalment invoices were never stored, so ~17% of revenue was invisible to ROAS. Idempotent upsert by invoice id from the webhook plus a backfill.
